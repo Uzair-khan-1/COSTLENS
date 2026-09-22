@@ -251,6 +251,11 @@ the AI, with the plot template as fallback. Try it with
 `sample_data/sample_5_marla_package.pdf` (a CAD-style 5 marla G+1 set;
 regenerate with `python sample_data/make_sample_package.py`).
 
+Strip (load-bearing) foundations are supported: choose `strip` as the
+footing type in Step 3 (set automatically when the foundation details show
+stepped brick wall sections). Width = PCC/trench width, thickness = PCC bed;
+the foundation runs under every ground-floor wall.
+
 Limits: CAD styles vary (walls as hatched polygons, blocks, non-rectangular
 footprints, scale notes that don't match the plotted size), so measured
 values are Medium confidence and always shown for review. Floors with
@@ -530,6 +535,29 @@ in-app and are fully editable before the BOQ is generated.
 - BOQ auto-recalculates; exports cached; Excel BOQ uses live formulas.
 - Pinned dependencies; deprecated Streamlit `use_container_width` removed.
 - Range/benchmark regression tests (`tests/test_accuracy_and_regressions.py`).
+
+**v0.4.0 - tested on a real 5 marla drawing set**
+- Refined against an actual 37-page architect's set (renders, site plan,
+  plans, elevations, foundation/tank details, doors & windows, plumbing,
+  electrical): reads inches written as `''`, rotated (vertical) text, and
+  split title/sub-title blocks; picks the best plan variant per floor
+  (working details > furniture layout > doors & windows) and ignores MEP
+  sheets for geometry.
+- **N.T.S sheets:** the scale is calibrated from the drawing's own dimension
+  lines (consensus of dimension text vs line length). Wall measurement is
+  limited to the plan's dimension ring and the building core, accepts only
+  standard brick thicknesses (4½", 9", 13½"), and ignores stair treads,
+  hatching and dimension extension lines.
+- Reads area-statement tables (and rejects a ground-floor area larger than
+  the plot), plot size from the site plan, door schedules (count and average
+  size), window sill tags, floor-to-floor height / slab / plinth from
+  elevation dimension chains, and detects the marla standard from plot area.
+- **Load-bearing houses:** new strip-foundation engine (trench excavation,
+  PCC bed, stepped brick footing to plinth with mortar breakdown, backfill),
+  detected automatically from wall-section foundation details or chosen in
+  Step 3. Isolated-footing results are unchanged.
+- Only one page per view goes to the AI (best ground plan, first-floor plan,
+  elevation).
 
 **v0.4.0 - 5-10 marla plots & drawing sets**
 - Plot templates (5/7/8/10 marla, 225 or 272.25 sqft per marla, 1-3

@@ -212,7 +212,8 @@ def plausibility_warnings(params: ExtractedBuildingParams, project_inputs: Proje
     nx, ny = column_grid(W, D)
     typical_cols = nx * ny
     cols = params.columns.count.value
-    if cols < 0.6 * typical_cols or cols > 1.8 * typical_cols:
+    load_bearing = params.footings.footing_type == "strip"  # few RCC columns is normal for load-bearing walls
+    if not load_bearing and (cols < 0.6 * typical_cols or cols > 1.8 * typical_cols):
         out.append(
             f"{cols:g} columns is outside the typical range for this plot "
             f"({math.floor(0.6 * typical_cols)}-{math.ceil(1.8 * typical_cols)}; template grid {nx} x {ny})."

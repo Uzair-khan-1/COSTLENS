@@ -67,6 +67,7 @@ CATEGORY_TO_WASTAGE_FIELD = {
     "DPC": "concrete_pct",
     "Anti-termite": "misc_pct",
     "Ground Floor Base": "concrete_pct",
+    "Foundation Masonry": "brick_block_pct",
     "Staircase": "concrete_pct",
     "Lintels": "concrete_pct",
     "Roof Treatment": "misc_pct",

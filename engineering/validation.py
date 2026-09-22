@@ -55,9 +55,9 @@ def validate_params(
 
     positive_fields = {
         "Plinth/built-up area per floor": params.plinth_area_per_floor_sqm.value,
-        "Footing length": f.length_m.value,
-        "Footing width": f.width_m.value,
-        "Footing thickness": f.depth_m.value,
+        **({} if f.footing_type == "strip" else {"Footing length": f.length_m.value}),
+        ("Strip foundation (PCC) width" if f.footing_type == "strip" else "Footing width"): f.width_m.value,
+        ("PCC bed thickness" if f.footing_type == "strip" else "Footing thickness"): f.depth_m.value,
         "Column width": c.width_m.value,
         "Column depth": c.depth_m.value,
         "Column height per floor": c.height_per_floor_m.value,
@@ -135,7 +135,10 @@ def validate_params(
                 f"({Ar(area, f'{area:.0f} m²')}) by {diff:.0%}."
             )
 
-    if f.footing_type != "isolated":
+    if f.footing_type == "strip":
+        if f.width_m.value < 2 * w.thickness_m.value:
+            warnings.append("Strip foundation width is less than twice the wall thickness - unusually narrow.")
+    elif f.footing_type != "isolated":
         warnings.append(
             f"Footing type is '{f.footing_type}', but quantities are calculated as isolated pad footings (MVP limitation)."
         )

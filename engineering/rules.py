@@ -355,6 +355,13 @@ DETAILING = {
         "ceiling_plaster_thickness_m": CEILING_PLASTER_THICKNESS_MM / 1000.0,
         "founding_depth_m": DEFAULT_FOUNDING_DEPTH_M,
         "footing_thickness_m": DEFAULT_FOOTING_THICKNESS_M,
+        # strip (load-bearing wall) foundations: stepped brick footing on a PCC bed
+        "strip_width_m": 0.90,
+        "strip_pcc_thickness_m": 0.15,
+        "strip_pcc_projection_m": 0.15,
+        "strip_step_offset_m": 0.057,
+        "strip_step_height_m": 0.15,
+        "strip_founding_depth_m": 1.05,
     },
     "FPS": {
         "pcc_projection_m": 3 * _IN,  # 3"
@@ -374,6 +381,12 @@ DETAILING = {
         "ceiling_plaster_thickness_m": 0.375 * _IN,  # 3/8"
         "founding_depth_m": 5 * _FT,  # 5'-0"
         "footing_thickness_m": 18 * _IN,  # 1'-6"
+        "strip_width_m": 3 * _FT,  # 3'-0" PCC bed under a 9" wall
+        "strip_pcc_thickness_m": 6 * _IN,  # 6" PCC 1:4:8
+        "strip_pcc_projection_m": 6 * _IN,  # PCC projects 6" beyond the bottom brick step
+        "strip_step_offset_m": 2.25 * _IN,  # each brick step 2-1/4" narrower per side
+        "strip_step_height_m": 6 * _IN,  # two courses per step
+        "strip_founding_depth_m": 3.5 * _FT,  # 3'-6"
     },
 }
 

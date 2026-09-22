@@ -32,7 +32,7 @@ from engineering import plot_templates
 from drawing_processing.package_analyzer import analyze_package, apply_package_facts, pages_for_ai, render_pages
 from export.excel_export import build_excel_workbook
 from export.pdf_export import build_pdf_report
-from models.schemas import ConfidenceLevel, EngineeringAssumptions, ProjectInputs
+from models.schemas import ConfidenceLevel, EngineeringAssumptions, Estimate, ProjectInputs, Source
 from mto_boq.boq_generator import boq_to_dataframe, cost_by_category, generate_boq
 from mto_boq.mto_generator import (
     compute_procurement_totals,
@@ -699,20 +699,43 @@ def step_3():
         current_type = params.footings.footing_type if params.footings.footing_type in footing_types else "isolated"
         params.footings.footing_type = st.selectbox(
             "Footing type", footing_types, index=footing_types.index(current_type),
-            help="Quantities are calculated as isolated pad footings in this MVP.",
+            help="isolated = RCC frame on pad footings; strip = load-bearing brick walls on stepped strip foundations "
+            "(typical for many 5-10 marla houses). raft/combined are calculated as isolated pads.",
         )
         if params.footings.founding_depth_m is None:
             params.footings.founding_depth_m = founding_depth_estimate(params.footings, unit_system)
+        if params.footings.footing_type != st.session_state.get("_last_footing_type", params.footings.footing_type) and "strip" in (
+            params.footings.footing_type, st.session_state.get("_last_footing_type")
+        ):
+            # switching to/from strip: swap in that system's standard sizes
+            det = rules.detailing(unit_system)
+            low = lambda v, n: Estimate(value=v, confidence=ConfidenceLevel.LOW, source=Source.DEFAULT_ASSUMPTION, note=n)  # noqa: E731
+            if params.footings.footing_type == "strip":
+                params.footings.width_m = low(det["strip_width_m"], "Typical strip foundation width")
+                params.footings.depth_m = low(det["strip_pcc_thickness_m"], "Typical PCC bed thickness")
+                params.footings.founding_depth_m = low(det["strip_founding_depth_m"], "Typical strip foundation depth")
+            else:
+                params.footings.width_m = low(det["footing_thickness_m"] * 0 + params.footings.length_m.value, "Square footing")
+                params.footings.depth_m = low(det["footing_thickness_m"], "Typical footing thickness")
+                params.footings.founding_depth_m = low(det["founding_depth_m"], "Typical founding depth")
+        st.session_state["_last_footing_type"] = params.footings.footing_type
+        strip = params.footings.footing_type == "strip"
+        if strip:
+            st.caption(
+                "Strip foundations (load-bearing walls): a PCC bed and stepped brick footing run under every "
+                "ground-floor wall (length = total wall length). Width = PCC/trench width; thickness = PCC bed; "
+                "Count and Length are not used."
+            )
         c1, c2, c3, c4, c5 = st.columns(5)
         with c1:
             params.footings.count = render_estimate_input("Count", params.footings.count, "ftg_count", "nos", step=1.0)
         with c2:
             params.footings.length_m = render_estimate_input("Length", params.footings.length_m, "ftg_len", step=0.05, unit_system=unit_system, quantity_kind="length")
         with c3:
-            params.footings.width_m = render_estimate_input("Width", params.footings.width_m, "ftg_wid", step=0.05, unit_system=unit_system, quantity_kind="length")
+            params.footings.width_m = render_estimate_input("Strip (PCC) width" if strip else "Width", params.footings.width_m, "ftg_wid", step=0.05, unit_system=unit_system, quantity_kind="length")
         with c4:
             params.footings.depth_m = render_estimate_input(
-                "Footing thickness", params.footings.depth_m, "ftg_dep", step=0.05, unit_system=unit_system, quantity_kind="thickness",
+                "PCC bed thickness" if strip else "Footing thickness", params.footings.depth_m, "ftg_dep", step=0.05, unit_system=unit_system, quantity_kind="thickness",
                 help_text=(
                     'Depth of the concrete pad itself (typically 12"-24"). Drives footing concrete volume.'
                     if units.is_fps(unit_system)

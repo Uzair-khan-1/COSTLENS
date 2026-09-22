@@ -1609,6 +1609,115 @@ def steel_sanity_check(structural_concrete_m3: float, total_steel_kg: float, uni
 
 
 # --------------------------------------------------------------------------
+# Strip (load-bearing wall) foundations
+# --------------------------------------------------------------------------
+
+
+def strip_footing_section(
+    trench_width_m: float, wall_thickness_m: float, height_m: float, unit_system: str = units.SI
+) -> dict:
+    """Cross-section of a stepped brick strip footing of total brick height
+    `height_m` (top of PCC bed -> plinth/DPC). Bottom step = PCC width - 2 x
+    projection; each step is `offset` narrower per side and `step_height`
+    tall, until the wall thickness is reached; the wall continues above."""
+    det = rules.detailing(unit_system)
+    bottom = max(trench_width_m - 2 * det["strip_pcc_projection_m"], wall_thickness_m)
+    area, h_left, width, steps = 0.0, max(height_m, 0.0), bottom, []
+    while width > wall_thickness_m + 1e-9 and h_left > 1e-9:
+        h = min(det["strip_step_height_m"], h_left)
+        area += width * h
+        steps.append(width)
+        h_left -= h
+        width = max(width - 2 * det["strip_step_offset_m"], wall_thickness_m)
+    area += wall_thickness_m * h_left
+    return {"area_m2": area, "bottom_width_m": bottom, "steps": steps}
+
+
+def compute_strip_foundation(
+    params: ExtractedBuildingParams,
+    project_inputs: ProjectInputs,
+    assumptions: Optional[EngineeringAssumptions] = None,
+    unit_system: str = units.SI,
+) -> List[QuantityLineItem]:
+    """Load-bearing wall foundations (typical 5-10 marla houses): a trench
+    under every ground-floor wall, a PCC bed, and stepped brickwork up to
+    the plinth. footings.width_m = trench/PCC width, footings.depth_m = PCC
+    bed thickness, founding depth = ground level -> underside of PCC."""
+    A = _assump(assumptions)
+    f, w = params.footings, params.walls
+    det = rules.detailing(unit_system)
+    L = w.total_length_per_floor_m.value
+    B = f.width_m.value
+    t_pcc = f.depth_m.value
+    fd = founding_depth_estimate(f, unit_system)
+    D = fd.value
+    t_wall = w.thickness_m.value
+    slope = rules.SOIL_SIDE_SLOPE_FACTOR.get(project_inputs.soil_type, 1.05)
+    brick_h = max(D - t_pcc, 0.0) + A.plinth_height_m
+    sec = strip_footing_section(B, t_wall, brick_h, unit_system)
+    below = strip_footing_section(B, t_wall, max(D - t_pcc, 0.0), unit_system)
+    exc_v = L * B * D * slope
+    pcc_v = L * B * t_pcc
+    mas_v = L * sec["area_m2"]
+    below_v = L * below["area_m2"]
+    backfill_v = max(exc_v - pcc_v - below_v, 0.0)
+    conf = combine_confidence(w.total_length_per_floor_m, f.width_m, fd)
+    sm = lambda v: units.small_text(v, unit_system, f"{v * 1000:.0f} mm")  # noqa: E731
+    ln = lambda v: units.length_text(v, unit_system, f"{v:.2f} m")  # noqa: E731
+    base = {
+        "foundation_wall_length_m": L,
+        "trench_width_m": B,
+        "founding_depth_m": D,
+        "pcc_thickness_m": t_pcc,
+        "wall_thickness_m": t_wall,
+    }
+    common = [
+        "Load-bearing walls on strip foundations: a trench under every ground-floor wall "
+        "(foundation length = ground-floor total wall length).",
+        f"Trench / PCC bed {ln(B)} wide, PCC {sm(t_pcc)} thick, founding depth {ln(D)} below ground.",
+    ]
+    return [
+        QuantityLineItem(
+            item_code="EXC-01",
+            description=f"Earthwork excavation in {project_inputs.soil_type.lower()} in trenches for strip foundations",
+            category="Excavation", unit="m3", quantity=_q(exc_v, 3, "m3"), confidence=conf,
+            formula="V = foundation_wall_length × trench_width × founding_depth × soil_side_slope_factor",
+            inputs_used={**base, "soil_side_slope_factor": slope},
+            assumptions=common + [f"Soil type '{project_inputs.soil_type}' side-slope/bulking factor = {slope}."],
+        ),
+        QuantityLineItem(
+            item_code="PCC-01",
+            description=f"PCC ({project_inputs.pcc_grade}) bed under strip foundations, {sm(t_pcc)} thick",
+            category="PCC", unit="m3", quantity=_q(pcc_v, 3, "m3"), confidence=conf,
+            formula="V = foundation_wall_length × trench_width × PCC_thickness",
+            inputs_used=dict(base), assumptions=list(common),
+        ),
+        QuantityLineItem(
+            item_code="FDN-MAS-01",
+            description="Brick masonry in stepped strip foundations up to plinth (bricks, mortar & labour)",
+            category="Foundation Masonry", unit="m3", quantity=_q(mas_v, 3, "m3"), confidence=conf,
+            formula="V = foundation_wall_length × [Σ(step_width × step_height) + wall_thickness × remaining height]",
+            inputs_used={**base, "brick_height_m": brick_h, "bottom_step_width_m": sec["bottom_width_m"],
+                         "steps": len(sec["steps"]), "section_area_sqm": sec["area_m2"]},
+            assumptions=common + [
+                f"Bottom step = PCC width - 2 × {sm(det['strip_pcc_projection_m'])}; each step "
+                f"{sm(det['strip_step_offset_m'])} narrower per side and {sm(det['strip_step_height_m'])} tall, "
+                "until the wall thickness.",
+                "Brickwork runs from the top of the PCC bed to plinth (DPC) level; walls above are in MAS-01..03.",
+            ],
+        ),
+        QuantityLineItem(
+            item_code="BACKFILL-01",
+            description="Backfilling foundation trenches with excavated earth, in layers, watered & compacted",
+            category="Earthwork", unit="m3", quantity=_q(backfill_v, 3, "m3"), confidence=conf,
+            formula="V = excavation − PCC − foundation brickwork below ground",
+            inputs_used={"excavation_m3": exc_v, "pcc_m3": pcc_v, "brickwork_below_ground_m3": below_v},
+            assumptions=["Excavated earth re-used for backfill (no imported fill); surplus disposal not priced."],
+        ),
+    ]
+
+
+# --------------------------------------------------------------------------
 # Master orchestrator
 # --------------------------------------------------------------------------
 
@@ -1647,19 +1756,32 @@ def _generate_all_quantities(
     items: List[QuantityLineItem] = []
 
     # --- Substructure -----------------------------------------------------
-    exc = compute_excavation(params.footings, project_inputs.soil_type, A, us)
-    items.append(exc)
+    strip = params.footings.footing_type == "strip"
+    if strip:
+        # load-bearing walls on stepped brick strip foundations
+        for it in compute_strip_foundation(params, project_inputs, A, us):
+            items.append(it)
+            if it.item_code == "PCC-01":
+                items.extend(_concrete_material_items(it, project_inputs.pcc_grade, us))
+            elif it.item_code == "FDN-MAS-01":
+                mat = params.walls.wall_material if params.walls.wall_material in rules.MASONRY_UNIT_SIZES_M else rules.DEFAULT_WALL_MATERIAL
+                nom, act = rules.MASONRY_UNIT_SIZES_M[mat], rules.MASONRY_UNIT_ACTUAL_SIZES_M[mat]
+                mortar_frac = 1.0 - (act[0] * act[1] * act[2]) / (nom[0] * nom[1] * nom[2])
+                items.extend(_mortar_material_items(it, it.quantity * mortar_frac, rules.MASONRY_MORTAR_MIX_RATIO, "foundation brickwork mortar"))
+    else:
+        exc = compute_excavation(params.footings, project_inputs.soil_type, A, us)
+        items.append(exc)
 
-    pcc = compute_pcc(params.footings, project_inputs.pcc_grade, A, us)
-    items.append(pcc)
-    items.extend(_concrete_material_items(pcc, project_inputs.pcc_grade, us))
+        pcc = compute_pcc(params.footings, project_inputs.pcc_grade, A, us)
+        items.append(pcc)
+        items.extend(_concrete_material_items(pcc, project_inputs.pcc_grade, us))
 
-    ftg_conc = compute_footing_concrete(params.footings, project_inputs.concrete_grade_footing)
-    items.append(ftg_conc)
-    items.extend(_concrete_material_items(ftg_conc, project_inputs.concrete_grade_footing, us))
-    items.append(compute_footing_steel(ftg_conc, params.footings, A, steel_grade, us))
+        ftg_conc = compute_footing_concrete(params.footings, project_inputs.concrete_grade_footing)
+        items.append(ftg_conc)
+        items.extend(_concrete_material_items(ftg_conc, project_inputs.concrete_grade_footing, us))
+        items.append(compute_footing_steel(ftg_conc, params.footings, A, steel_grade, us))
 
-    items.append(compute_backfill(exc, pcc, ftg_conc, params.columns, params.footings, us))
+        items.append(compute_backfill(exc, pcc, ftg_conc, params.columns, params.footings, us))
     items.append(compute_plinth_filling(params, A, us))
     gf_items = compute_ground_floor_base(params, us)
     for gf in gf_items:
@@ -1702,7 +1824,10 @@ def _generate_all_quantities(
     items.extend(_concrete_material_items(lintel_conc, project_inputs.concrete_grade_beam, us))
     items.append(compute_lintel_steel(lintel_conc, A, steel_grade, us))
 
-    items.extend(compute_formwork(params.footings, params.columns, params.beams, params.slabs, num_floors, A, us))
+    formwork = compute_formwork(params.footings, params.columns, params.beams, params.slabs, num_floors, A, us)
+    if strip:
+        formwork = [i for i in formwork if i.item_code != "FORM-FTG-01"]  # brick footings need no shuttering
+    items.extend(formwork)
     items.extend(stair_formwork)
     items.extend(i for i in lintel_items if i.category == "Formwork")
 

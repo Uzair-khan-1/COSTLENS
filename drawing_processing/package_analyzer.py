@@ -44,7 +44,7 @@ from utils import units
 FT = 0.3048
 IN = 0.0254
 SQFT = FT * FT
-MAX_PACKAGE_PAGES = 20
+MAX_PACKAGE_PAGES = 60  # text pass on every page is cheap; geometry runs only on the chosen plan sheets
 
 FLOOR_ORDER = ["basement", "ground", "first", "second", "third"]
 FLOOR_NAMES = {
@@ -58,12 +58,15 @@ FLOOR_NAMES = {
 _QUOTES = str.maketrans({"’": "'", "′": "'", "‘": "'", "`": "'", "”": '"', "″": '"', "“": '"', "×": "x", "–": "-", "—": "-"})
 _FTIN = r"(\d{1,3})\s*'\s*-?\s*(?:(\d{1,2}(?:\.\d+)?)(?:\s+(\d)/(\d{1,2}))?\s*\"?)?"
 _DIMS_RE = re.compile(_FTIN + r"\s*[xX]\s*" + _FTIN)
-_LEVEL_RE = re.compile(r"(?<![\w'])([+\-±])\s*" + _FTIN)
+_LEVEL_RE = re.compile(r"(\+|±|(?<![\w'])-)\s*" + _FTIN)
 _INCH_DIMS_RE = re.compile(r"(\d{1,2}(?:\.\d+)?)\s*\"\s*[xX]\s*(\d{1,2}(?:\.\d+)?)\s*\"")
 
 
 def normalize_text(text: str) -> str:
-    return (text or "").translate(_QUOTES)
+    """Unifies CAD quote styles: curly quotes, primes, and the common
+    Pakistani CAD habit of writing inches as two apostrophes (13'-4'')."""
+    t = (text or "").translate(_QUOTES)
+    return t.replace("''", '"')
 
 
 def _ftin_value(g: Tuple) -> float:
@@ -275,6 +278,16 @@ def _segments(page: "pymupdf.Page") -> Tuple[list, list, list]:
     return sorted(H), sorted(V), curves
 
 
+def _has_parallel(segs: list, positions: list, at: float, lo: float, hi: float, tol: float = 0.6) -> bool:
+    i = bisect.bisect_left(positions, at - tol)
+    while i < len(segs) and positions[i] <= at + tol:
+        q, b0, b1 = segs[i]
+        if min(hi, b1) - max(lo, b0) >= 0.5 * (hi - lo):
+            return True
+        i += 1
+    return False
+
+
 def _pair_walls(segs: list, ft_per_pt: float) -> List[Tuple[float, float, float, float, float]]:
     """Pairs parallel segments a wall-thickness apart (3"-9.75" real).
     Returns wall spans (position_mid, start, end, thickness_ft, outer_lo, outer_hi)
@@ -295,6 +308,11 @@ def _pair_walls(segs: list, ft_per_pt: float) -> List[Tuple[float, float, float,
                 best = (q, max(a0, b0), min(a1, b1))
             j += 1
         if best:
+            gap_pt = best[0] - pos
+            if _has_parallel(segs, positions, best[0] + gap_pt, best[1], best[2]) or _has_parallel(
+                segs, positions, pos - gap_pt, best[1], best[2]
+            ):
+                continue  # 3+ equally spaced lines = stair treads / hatching, not a wall
             raw.append(((pos + best[0]) / 2, best[1], best[2], (best[0] - pos) * ft_per_pt, pos, best[0]))
     # merge collinear pieces of the same wall across door/window gaps
     raw.sort(key=lambda r: (round(r[0] / (1.0 / 12 / ft_per_pt)), round(r[3] * 12), r[1]))
@@ -321,9 +339,30 @@ class WallMeasurement:
     doors: int
 
 
+STANDARD_WALL_THICKNESS_IN = (4.5, 9.0, 13.5)  # half brick, one brick, 1.5 brick (Pakistani practice)
+
+
+def _standard_walls(walls: list) -> list:
+    """Keeps pairs whose spacing is a standard brick-wall thickness (+-0.75")."""
+    return [w for w in walls if min(abs(w[3] * 12 - t) for t in STANDARD_WALL_THICKNESS_IN) <= 0.75]
+
+
 def measure_plan(H: list, V: list, curves: list, ft_per_pt: float) -> Optional[WallMeasurement]:
-    hw = _pair_walls(H, ft_per_pt)
-    vw = _pair_walls(V, ft_per_pt)
+    hw = _standard_walls(_pair_walls(H, ft_per_pt))
+    vw = _standard_walls(_pair_walls(V, ft_per_pt))
+    # building core = extent of LONG walls (>= 6 ft); dimension extension
+    # lines (short parallel pairs 4.5"/9" apart in the dimension ring) fall
+    # outside it and are dropped
+    long_h = [w for w in hw if (w[2] - w[1]) * ft_per_pt >= 6]
+    long_v = [w for w in vw if (w[2] - w[1]) * ft_per_pt >= 6]
+    if long_h and long_v:
+        tol = 1.0 / ft_per_pt
+        cx0 = min([w[1] for w in long_h] + [w[4] for w in long_v]) - tol
+        cx1 = max([w[2] for w in long_h] + [w[5] for w in long_v]) + tol
+        cy0 = min([w[4] for w in long_h] + [w[1] for w in long_v]) - tol
+        cy1 = max([w[5] for w in long_h] + [w[2] for w in long_v]) + tol
+        hw = [w for w in hw if cx0 <= w[1] and w[2] <= cx1 and cy0 <= w[0] <= cy1]
+        vw = [w for w in vw if cy0 <= w[1] and w[2] <= cy1 and cx0 <= w[0] <= cx1]
     if len(hw) < 2 or len(vw) < 2:
         return None
     length = sum((w[2] - w[1]) * ft_per_pt for w in hw + vw)
@@ -367,6 +406,7 @@ class FloorFacts:
     rooms: List[Tuple[str, float, float, str]] = field(default_factory=list)
     geometry_confidence: ConfidenceLevel = ConfidenceLevel.MEDIUM
     scale_label: str = ""
+    windows: Optional[int] = None
 
     def count(self, kind: str) -> int:
         return sum(1 for r in self.rooms if r[3] == kind)
@@ -391,6 +431,10 @@ class PackageFacts:
     plot: Dict[str, Tuple[float, str]] = field(default_factory=dict)
     conflicts: List[str] = field(default_factory=list)
     page_kinds: Dict[Tuple[int, int], str] = field(default_factory=dict)  # (file_idx, page_idx) -> best view kind/floor
+    foundation: Dict[str, Tuple[float, str]] = field(default_factory=dict)  # strip foundation data
+    openings: Dict[str, Tuple[float, str]] = field(default_factory=dict)  # door schedule / window counts
+    elevation: Dict[str, Tuple[float, str]] = field(default_factory=dict)  # heights from elevation dimension chains
+    best_plan_page: Dict[str, Tuple[int, int]] = field(default_factory=dict)  # floor -> (file_idx, page_idx)
 
     @property
     def storeys(self) -> int:
@@ -413,12 +457,14 @@ def _rooms_from_lines(lines: List[TextLine]) -> List[Tuple[str, float, float, st
             continue
         name = _DIMS_RE.sub("", ln.text).strip(" :-,")
         if not re.search(r"[A-Za-z]{3,}", name):
-            h = max(ln.y1 - ln.y0, 1.0)
-            above = [o for o in lines if o is not ln and 0 < ln.cy - o.cy <= 3 * h and abs(o.cx - ln.cx) <= 6 * h
-                     and re.search(r"[A-Za-z]{3,}", o.text) and not parse_room_dims(o.text)]
-            if not above:
+            # nearest label with letters - works for horizontal and rotated
+            # (vertical) text alike, since only centre distance is used
+            ch = max(min(ln.x1 - ln.x0, ln.y1 - ln.y0), 1.0)  # character height in either orientation
+            near = [o for o in lines if o is not ln and re.search(r"[A-Za-z]{3,}", o.text) and not parse_room_dims(o.text)
+                    and math.hypot(o.cx - ln.cx, o.cy - ln.cy) <= 4 * ch and not classify_title(o.text)]
+            if not near:
                 continue
-            name = min(above, key=lambda o: (ln.cy - o.cy) + abs(o.cx - ln.cx)).text.strip()
+            name = min(near, key=lambda o: math.hypot(o.cx - ln.cx, o.cy - ln.cy)).text.strip()
         if classify_title(name):
             continue
         rooms.append((name.upper(), dims[0], dims[1], room_kind(name), ln.cx, ln.cy))
@@ -481,8 +527,10 @@ def _structural_facts(lines: List[TextLine], words: List[str]) -> Dict[str, floa
         cd = _INCH_DIMS_RE.search(up)
         if cm and cd:
             a, b = sorted([float(cd.group(1)), float(cd.group(2))])
-            if 6 <= a <= 24 and 9 <= b <= 36:
+            if 6 <= a <= 24 and 9 <= b <= 36 and "column_width_ft" not in out:
                 out["column_width_ft"], out["column_depth_ft"] = a / 12, b / 12
+            if 6 <= a <= 24 and 9 <= b <= 36:
+                out["column_types"] = out.get("column_types", 0) + 1
     tags = [w.upper().replace("-", "") for w in words if re.fullmatch(r"[Ff]-?\d{1,2}", w)]
     counts = {t: tags.count(t) - 1 for t in set(tags) if t in sizes}  # minus the schedule row
     total = sum(max(c, 0) for c in counts.values())
@@ -544,6 +592,14 @@ def _infer_scale(H, V, curves, plot_width_ft: Optional[float]) -> Optional[Tuple
     return (best[1], best[2], best[3]) if best else None
 
 
+def _area_t(sqft: float, unit_system: str) -> str:
+    return f"{sqft:,.0f} sqft" if units.is_fps(unit_system) else f"{sqft * SQFT:,.1f} m²"
+
+
+def _len_t(ft: float, unit_system: str) -> str:
+    return units.fmt_ftin(ft * FT) if units.is_fps(unit_system) else f"{ft * FT:.2f} m"
+
+
 def _finding(key: str, value: float, unit_system: str) -> str:
     label = key.replace("_ft", "").replace("_", " ").capitalize()
     if key in ("footing_count", "column_count"):
@@ -556,12 +612,251 @@ def _finding(key: str, value: float, unit_system: str) -> str:
     return f"{label}: {value * FT * (1000 if small else 1):.{0 if small else 2}f} {'mm' if small else 'm'}"
 
 
+# --------------------------------------------------------------------------
+# Real-world drawing-set helpers (N.T.S sheets, area tables, schedules...)
+# --------------------------------------------------------------------------
+
+
+def _single_dim_ft(text: str) -> Optional[float]:
+    """A text item that is ONE dimension (e.g. "33'", "12'-6\\"", "9\\"")."""
+    t = normalize_text(text).strip()
+    m = re.fullmatch(_FTIN, t)
+    if m and m.group(1) is not None:
+        return _ftin_value(m.groups())
+    m = re.fullmatch(r"(\d{1,2}(?:\.\d+)?)\s*\"", t)
+    return float(m.group(1)) / 12.0 if m else None
+
+
+def calibrate_scale(lines: List[TextLine], H: list, V: list) -> Optional[Tuple[float, int, int]]:
+    """Scale from the drawing's own dimension lines - for sheets marked
+    N.T.S or plotted "fit to page". Every dimension text (e.g. "33'") is
+    matched with the nearest parallel line passing under it; the ratio
+    line-length / value is collected and the consensus (largest cluster
+    within 2%) is the scale. Returns (ft_per_pt, support, samples)."""
+    Hy = [sg[0] for sg in H]
+    Vx = [sg[0] for sg in V]
+    ratios = []
+    for ln in lines:
+        v = _single_dim_ft(ln.text)
+        if not v or v < 3:
+            continue
+        w, h = ln.x1 - ln.x0, ln.y1 - ln.y0
+        ch = max(min(w, h), 1.0)
+        if h > w:  # vertical text -> vertical dimension line
+            segs, pos, centre, along = V, Vx, ln.cx, ln.cy
+        else:
+            segs, pos, centre, along = H, Hy, ln.cy, ln.cx
+        lo, hi = bisect.bisect_left(pos, centre - 2.5 * ch), bisect.bisect_right(pos, centre + 2.5 * ch)
+        cands = [(abs(sg[0] - centre), sg[2] - sg[1]) for sg in segs[lo:hi]
+                 if sg[1] - 1 <= along <= sg[2] + 1 and sg[2] - sg[1] >= 0.9 * max(w, h)]
+        if cands:
+            ratios.append(min(cands)[1] / v)
+    if len(ratios) < 4:
+        return None
+    ratios.sort()
+    best = (0, 0.0)
+    for r in ratios:
+        cluster = [x for x in ratios if abs(x - r) <= 0.02 * r]
+        if len(cluster) > best[0]:
+            best = (len(cluster), statistics.median(cluster))
+    support, pts_per_ft = best
+    if support < 4 or support < 0.2 * len(ratios) or pts_per_ft <= 0:
+        return None
+    return 1.0 / pts_per_ft, support, len(ratios)
+
+
+_AREA_LABELS = [
+    ("covered_basement_sqft", r"BASEMENT"), ("covered_ground_sqft", r"GROUND"), ("covered_first_sqft", r"FIRST|1ST"),
+    ("covered_second_sqft", r"SECOND|2ND"), ("covered_third_sqft", r"THIRD|3RD"), ("covered_mumty_sqft", r"MUMTY"),
+]
+_NUM_AREA_RE = re.compile(r"^\s*([\d,]+(?:\.\d+)?)\s*(?:SQ\.?\s*FT\.?|SFT\.?|SQFT\.?|S\.FT\.?)?\s*$")
+
+
+def _area_table(lines: List[TextLine]) -> Dict[str, float]:
+    """'AREA OF GROUND FLOOR ..... 1512.00 SQFT' style tables where label and
+    value are separate text items on the same row, plus 'PLOT 1353 SQFT'."""
+    out: Dict[str, float] = {}
+    for ln in lines:
+        up = ln.text.upper()
+        key = None
+        if re.search(r"AREA\s*OF\s*(THE\s*)?PLOT|PLOT\s*AREA", up):
+            key = "plot_area_sqft"
+        elif "AREA" in up and "TOTAL" not in up and "BUILT UP AREA SUMMARY" not in up:
+            for k, pat in _AREA_LABELS:
+                if re.search(r"\b(" + pat + r")\b", up):
+                    key = k
+                    break
+        if not key:
+            m = re.search(r"PLOT\s*([\d,]{3,}(?:\.\d+)?)\s*(?:SQ|SFT)", up)
+            if m:
+                out.setdefault("plot_area_sqft", float(m.group(1).replace(",", "")))
+            continue
+        inline = re.search(r"([\d,]{3,}(?:\.\d+)?)\s*(?:SQ\.?\s*FT|SFT|SQFT)", up)
+        if inline:
+            out.setdefault(key, float(inline.group(1).replace(",", "")))
+            continue
+        h = max(ln.y1 - ln.y0, 1.0)
+        row = [o for o in lines if o is not ln and o.cx > ln.cx and abs(o.cy - ln.cy) <= 0.6 * h and _NUM_AREA_RE.match(o.text.upper())]
+        if row:
+            val = float(_NUM_AREA_RE.match(min(row, key=lambda o: o.cx).text.upper()).group(1).replace(",", ""))
+            if 50 <= val <= 20000:
+                out.setdefault(key, val)
+    return out
+
+
+def _door_schedule(lines: List[TextLine], full_text: str) -> Optional[Tuple[int, float]]:
+    """(total doors, average door area sqft) from a door schedule table:
+    rows 'W X H ... QTY'. Only on pages that look like a schedule."""
+    up_all = full_text.upper()
+    if not re.search(r"\bQTY\b|SCHEDULE|TOTAL\s*=", up_all):
+        return None
+    rows = []
+    for ln in lines:
+        dims = parse_room_dims(ln.text)
+        if not dims or not (2 <= dims[0] <= 6.5 and 6 <= dims[1] <= 9):
+            continue
+        h = max(ln.y1 - ln.y0, 1.0)
+        qty = [o for o in lines if o is not ln and o.cx > ln.cx and abs(o.cy - ln.cy) <= 0.6 * h and re.fullmatch(r"\s*\d{1,2}\s*", o.text)]
+        if qty:
+            rows.append((dims[0], dims[1], int(min(qty, key=lambda o: o.cx - ln.cx).text)))
+    if not rows:
+        return None
+    total = sum(r[2] for r in rows)
+    m = re.search(r"TOTAL\s*=?\s*(\d{1,3})", up_all)
+    if m and int(m.group(1)) > total:
+        total_stated = int(m.group(1))
+        area = sum(r[0] * r[1] * r[2] for r in rows) / max(total, 1)
+        return total_stated, area
+    return total, sum(r[0] * r[1] * r[2] for r in rows) / max(total, 1)
+
+
+def _chains(lines: List[TextLine]) -> List[List[float]]:
+    """Dimension chains: runs of single-dimension texts aligned in a column
+    (or row), ordered along the chain. A height chain on an elevation is a
+    column of texts each rotated to read along the chain (taller than wide)
+    or a row of normal texts on a rotated sheet."""
+    dims = [(ln, _single_dim_ft(ln.text)) for ln in lines]
+    dims = [(ln, v) for ln, v in dims if v is not None]
+    chains = []
+    for axis in ("x", "y"):
+        key = (lambda d: d[0].cx) if axis == "x" else (lambda d: d[0].cy)
+        along = (lambda d: d[0].cy) if axis == "x" else (lambda d: d[0].cx)
+        # column (axis x) = texts rotated to read vertically; row (axis y) = horizontal texts
+        # short texts (e.g. 6") are nearly square, so they count for both
+        oriented = [d for d in dims if len(d[0].text.strip()) <= 3 or ((d[0].y1 - d[0].y0) >= (d[0].x1 - d[0].x0)) == (axis == "x")]
+        ordered = sorted(oriented, key=key)
+        sizes = [min(d[0].x1 - d[0].x0, d[0].y1 - d[0].y0) for d in oriented] or [4]
+        tol = max(4.0, 1.5 * statistics.median(sizes))  # short dims are often placed a little off the chain
+        group: list = []
+        for d in ordered:
+            if group and key(d) - key(group[-1]) > tol:
+                chains.append([v for _, v in sorted(group, key=along)])
+                group = []
+            group.append(d)
+        if group:
+            chains.append([v for _, v in sorted(group, key=along)])
+    return chains
+
+
+def _elevation_facts(lines: List[TextLine]) -> Dict[str, float]:
+    """Floor-to-floor height, slab and plinth from an elevation/section
+    dimension chain such as [9", 8'-6", 6", 11'-6", 6", 11'-6", 1'-6"]:
+    storeys are 9'-14' values; a 4"-9" value next to a storey is the slab
+    (floor-to-floor = storey + slab); a 9"-3' value beyond the end storey
+    is the plinth."""
+    best = None
+    for vals in _chains(lines):
+        storeys = [i for i, v in enumerate(vals) if 9 <= v <= 14]
+        if not storeys or len(storeys) > 3:
+            continue
+        slab_adj = sum(1 for i in storeys for j in (i - 1, i + 1) if 0 <= j < len(vals) and 4 / 12 <= vals[j] <= 9 / 12)
+        score = (slab_adj, len(storeys), len(vals))
+        if best is None or score > best[2]:
+            best = (vals, storeys, score)
+    if not best:
+        return {}
+    vals, storeys, _score = best
+    f2f, slabs = [], []
+    for i in storeys:
+        slab = next((vals[j] for j in (i - 1, i + 1) if 0 <= j < len(vals) and 4 / 12 <= vals[j] <= 9 / 12), None)
+        f2f.append(vals[i] + (slab or 0))
+        if slab:
+            slabs.append(slab)
+    out = {"floor_height_ft": statistics.median(f2f), "levels_storeys": float(len(storeys))}
+    if slabs:
+        out["slab_thickness_ft"] = statistics.median(slabs)
+    ends = [(storeys[0] - 1), (storeys[-1] + 1)]
+    plinth = [vals[j] for j in ends if 0 <= j < len(vals) and 0.75 <= vals[j] <= 3.0]
+    if len(plinth) == 1:
+        out["plinth_height_ft"] = plinth[0]
+    return out
+
+
+def _strip_foundation_facts(lines: List[TextLine], full_text: str) -> Dict[str, float]:
+    """Load-bearing wall foundations (stepped brick footing on a PCC bed):
+    detected from wall-section details on the foundation sheet."""
+    up = full_text.upper()
+    if not (re.search(r"SECTION\s*OF\s*[\d\"'½ ]*\s*(THICK)?", up) and "WALL" in up and re.search(r"P\.?\s*C\.?\s*C", up)):
+        return {}
+    vals = [v for v in (_single_dim_ft(ln.text) for ln in lines) if v is not None]
+    widths = sorted({round(v, 3) for v in vals if 2.0 <= v <= 4.5})
+    depths = [round(v, 3) for v in vals if 2.5 <= v <= 6.0]
+    out = {"strip": 1.0}
+    if widths:
+        out["strip_width_ft"] = statistics.median(widths)
+    if depths:
+        out["founding_depth_ft"] = statistics.mode(depths)
+    return out
+
+
+def _page_role(views: List[View], full_text: str) -> str:
+    """plan variant / other role of a page from its title AND sub-title."""
+    up = full_text.upper()
+    kinds = {v.kind for v in views}
+    if "mep" in kinds or re.search(r"PLUMBING|ELECTRIC", up):
+        return "mep"
+    if "plan" in kinds:
+        if "WORKING" in up:
+            return "plan_working"
+        if re.search(r"DOORS?\s*&?\s*(AND)?\s*WINDOWS?", up):
+            return "plan_dw"
+        if "FURNITURE" in up:
+            return "plan_furniture"
+        return "plan"
+    return next(iter(sorted(kinds)), "unknown")
+
+
+def _dedupe_views(views: List[View], lines: List[TextLine]) -> List[View]:
+    """Titles repeat in the title block ('Title: GROUND FLOOR PLAN'); keep
+    the largest-lettered occurrence of each (kind, floor)."""
+    size = {}
+    for ln in lines:
+        size.setdefault(ln.text.strip(), 0)
+        size[ln.text.strip()] = max(size[ln.text.strip()], min(ln.x1 - ln.x0, ln.y1 - ln.y0))
+    best: Dict[Tuple[str, Optional[str]], View] = {}
+    for v in views:
+        k = (v.kind, v.floor)
+        if k not in best or size.get(v.title, 0) > size.get(best[k].title, 0):
+            best[k] = v
+    return list(best.values())
+
+
+# --------------------------------------------------------------------------
+# Package analysis (two passes: text on every page, geometry on chosen plans)
+# --------------------------------------------------------------------------
+
+
 def analyze_package(files: List[dict], plot_width_hint_ft: Optional[float] = None, unit_system: str = "FPS") -> PackageFacts:
-    """files: [{"name", "bytes", "view_tag"}]. Only PDFs are analysed here
-    (images carry no text/vectors). Reads at most MAX_PACKAGE_PAGES pages."""
+    """files: [{"name", "bytes", "view_tag"}]. Pass 1 reads the text of
+    every page (cheap) and sorts the sheets; pass 2 measures geometry only
+    on the best plan sheet of each floor."""
     facts = PackageFacts()
     pages_read = 0
-    plan_views: List[Tuple[View, List[TextLine], tuple, Optional[Tuple[str, float]], str]] = []
+    plan_candidates: Dict[str, list] = {}  # floor -> [(rank, -n_dims, fi, pi, view, lines, scale)]
+    windows_by_floor: Dict[str, int] = {}
+    docs = {}
+    site_dims: List[float] = []
+    elev_candidates = []
     for fi, f in enumerate(files):
         if not f["name"].lower().endswith(".pdf"):
             facts.sheets.append(SheetSummary(f["name"], 1, [f.get("view_tag", "Image")], ["Image - left to the AI (no text layer or vectors)."], False, False))
@@ -571,81 +866,155 @@ def analyze_package(files: List[dict], plot_width_hint_ft: Optional[float] = Non
         except Exception:  # noqa: BLE001
             facts.sheets.append(SheetSummary(f["name"], 1, ["unreadable"], ["Could not open this PDF."], False, False))
             continue
-        with doc:
-            for pi_, page in enumerate(doc):
-                if pages_read >= MAX_PACKAGE_PAGES:
-                    break
-                pages_read += 1
-                lines = _text_lines(page)
-                full_text = "\n".join(ln.text for ln in lines)
-                H, V, curves = _segments(page)
-                views = []
-                for ln in lines:
-                    c = classify_title(ln.text)
-                    if c:
-                        views.append(View(c[0], c[1], ln.text.strip(), ln.cx, ln.cy))
-                findings: List[str] = []
-                for k, v in _plot_facts(full_text).items():
-                    facts.plot.setdefault(k, (v, f"{f['name']} p{pi_ + 1}"))
-                scale = parse_scale(full_text)
-                src = f"{f['name']} p{pi_ + 1}"
-                kinds_here = {v.kind for v in views}
-                if not views:
-                    facts.page_kinds[(fi, pi_)] = "unknown"
-                else:
-                    order = ["plan", "section", "elevation", "structural", "site", "schedule", "mep"]
-                    top = min(views, key=lambda v: order.index(v.kind) if v.kind in order else 99)
-                    facts.page_kinds[(fi, pi_)] = f"{top.kind}:{top.floor or ''}"
-                # section facts: text near section views (whole page if single view)
-                if "section" in kinds_here:
-                    sec_lines = [ln for ln in lines if _nearest_view(views, ln.cx, ln.cy) and _nearest_view(views, ln.cx, ln.cy).kind in {"section", "elevation"}]
+        docs[fi] = doc
+        for pi_, page in enumerate(doc):
+            if pages_read >= MAX_PACKAGE_PAGES:
+                break
+            pages_read += 1
+            lines = _text_lines(page)
+            full_text = "\n".join(ln.text for ln in lines)
+            src = f"{f['name']} p{pi_ + 1}"
+            views = _dedupe_views([View(c[0], c[1], ln.text.strip(), ln.cx, ln.cy)
+                                   for ln in lines for c in [classify_title(ln.text)] if c], lines)
+            role = _page_role(views, full_text) if views else ("unknown" if lines else "image")
+            findings: List[str] = []
+            # title-block / site data (any page)
+            for k, v in {**_plot_facts(full_text), **_area_table(lines)}.items():
+                facts.plot.setdefault(k, (v, src))
+            if any(v.kind == "site" for v in views):
+                site_dims += [d for d in (_single_dim_ft(ln.text) for ln in lines) if d and d >= 15]
+            ds = _door_schedule(lines, full_text)
+            if ds:
+                facts.openings.setdefault("doors_total", (float(ds[0]), src))
+                facts.openings.setdefault("door_area_sqft", (ds[1], src))
+                findings.append(f"Door schedule: {ds[0]} doors, average {ds[1]:.1f} sqft")
+            if role == "mep":
+                facts.page_kinds[(fi, pi_)] = "mep:"
+            elif views:
+                # sections on a foundation/structural sheet are wall/footing details, not building sections
+                order = ["plan", "structural", "section", "elevation", "site", "schedule"]
+                top = min(views, key=lambda v: order.index(v.kind) if v.kind in order else 99)
+                facts.page_kinds[(fi, pi_)] = f"{top.kind}:{top.floor or ''}"
+            else:
+                facts.page_kinds[(fi, pi_)] = "unknown"
+            kinds_here = {v.kind for v in views}
+            if role != "mep":
+                if kinds_here & {"section"}:
+                    sec_lines = [ln for ln in lines if (nv := _nearest_view(views, ln.cx, ln.cy)) and nv.kind in {"section", "elevation", "structural"}]
                     for k, v in _section_facts(sec_lines).items():
                         facts.section.setdefault(k, (v, src))
                         findings.append(_finding(k, v, unit_system))
+                if kinds_here & {"elevation", "section"}:
+                    ef = _elevation_facts(lines)
+                    if ef:
+                        elev_candidates.append((ef, src))
                 if "structural" in kinds_here:
                     words = [w[4] for w in page.get_text("words")]
                     for k, v in _structural_facts(lines, words).items():
                         facts.structural.setdefault(k, (v, src))
                         findings.append(_finding(k, v, unit_system))
-                for v in views:
-                    if v.kind == "plan" and v.floor:
-                        vlines = [ln for ln in lines if _nearest_view(views, ln.cx, ln.cy, {"plan"}) is v]
-                        plan_views.append((v, vlines, (H, V, curves), scale, src))
-                facts.sheets.append(SheetSummary(
-                    f["name"], pi_ + 1,
-                    [f"{v.kind}{' (' + FLOOR_NAMES.get(v.floor, v.floor) + ')' if v.floor else ''}" for v in views] or ["unrecognised"],
-                    findings, bool(lines), bool(H or V),
-                ))
+                    for k, v in _strip_foundation_facts(lines, full_text).items():
+                        if k not in facts.foundation:
+                            facts.foundation[k] = (v, src)
+                            if k != "strip":
+                                findings.append(_finding(k.replace("strip_", "strip foundation "), v, unit_system))
+                            else:
+                                findings.append("Strip (load-bearing wall) foundations")
+                plan_views = [v for v in views if v.kind == "plan" and v.floor]
+                for v in plan_views:
+                    vlines = [ln for ln in lines if _nearest_view(views, ln.cx, ln.cy, {"plan"}) is v] if len(plan_views) > 1 else lines
+                    rank = {"plan_working": 0, "plan": 1, "plan_furniture": 2, "plan_dw": 3}.get(role, 4)
+                    n_dims = sum(1 for ln in vlines if _single_dim_ft(ln.text))
+                    plan_candidates.setdefault(v.floor, []).append((rank, -n_dims, fi, pi_, v, vlines, parse_scale(full_text), src, len(plan_views)))
+                    if role == "plan_dw":
+                        n_sill = sum(len(re.findall(r"\bSILL", ln.text.upper())) for ln in vlines)
+                        if n_sill:
+                            windows_by_floor[v.floor] = max(windows_by_floor.get(v.floor, 0), n_sill)
+            facts.sheets.append(SheetSummary(
+                f["name"], pi_ + 1,
+                ([f"{v.kind}{' (' + FLOOR_NAMES.get(v.floor, v.floor) + ')' if v.floor else ''}" for v in views] or
+                 (["picture / render"] if role == "image" else ["unrecognised"])) + (["MEP"] if role == "mep" and "mep" not in kinds_here else []),
+                findings, bool(lines), False,
+            ))
 
+    # elevation chains: most storeys wins
+    if elev_candidates:
+        # the floor height agreed by most elevation/section sheets wins
+        votes = statistics.multimode([round(c[0]["floor_height_ft"], 2) for c in elev_candidates])
+        pick = [c for c in elev_candidates if round(c[0]["floor_height_ft"], 2) in votes]
+        ef, src = max(pick, key=lambda c: ("slab_thickness_ft" in c[0], "plinth_height_ft" in c[0]))
+        facts.elevation = {k: (v, src) for k, v in ef.items()}
+        facts.elevation["sheets_agreeing"] = (float(sum(1 for c in elev_candidates if round(c[0]["floor_height_ft"], 2) in votes)), src)
+    # plot size from the site plan's overall dimensions (their product = plot area)
+    pa = facts.plot.get("plot_area_sqft")
+    if pa and "plot_width_ft" not in facts.plot:
+        pairs = [(a, b) for i, a in enumerate(site_dims) for b in site_dims[i + 1:] if abs(a * b - pa[0]) <= 0.02 * pa[0]]
+        if pairs:
+            a, b = pairs[0]
+            facts.plot["plot_width_ft"], facts.plot["plot_depth_ft"] = (min(a, b), pa[1]), (max(a, b), pa[1])
+    for floor, n in windows_by_floor.items():
+        facts.openings[f"windows_{floor}"] = (float(n), "doors & windows sheet")
+
+    # ---- pass 2: geometry on the best plan sheet per floor --------------
     plot_w = facts.plot.get("plot_width_ft", (plot_width_hint_ft, ""))[0]
-    for view, vlines, (H, V, curves), scale, src in plan_views:
-        if view.floor in facts.floors:
-            continue
-        ff = FloorFacts(floor=view.floor, source=f"{view.title.title()} ({src})")
-        rooms = _rooms_from_lines(vlines)
-        ff.rooms = [(r[0], r[1], r[2], r[3]) for r in rooms]
-        # geometry only for the part of the page belonging to this plan view
-        same_page = [pv for pv in plan_views if pv[4] == src]
-        if len(same_page) > 1:
-            def mine(x, y):
-                return min(same_page, key=lambda pv: (pv[0].cx - x) ** 2 + (pv[0].cy - y) ** 2)[0] is view
-            Hs = [s for s in H if mine((s[1] + s[2]) / 2, s[0])]
-            Vs = [s for s in V if mine(s[0], (s[1] + s[2]) / 2)]
-            Cs = [c for c in curves if mine((c[0] + c[2]) / 2, (c[1] + c[3]) / 2)]
-        else:
-            Hs, Vs, Cs = H, V, curves
+    plot_area = facts.plot.get("plot_area_sqft", (None, ""))[0]
+    for floor, cands in plan_candidates.items():
+        rank, _, fi, pi_, view, vlines, scale, src, n_views = min(cands, key=lambda c: (c[0], c[1]))
+        facts.best_plan_page[floor] = (fi, pi_)
+        ff = FloorFacts(floor=floor, source=f"{view.title.title()} ({src})")
+        ff.rooms = [(r[0], r[1], r[2], r[3]) for r in _rooms_from_lines(vlines)]
+        if not ff.rooms:  # labels may sit on a different variant of the same plan
+            for c in sorted(cands, key=lambda c: (c[0], c[1])):
+                rooms = _rooms_from_lines(c[5])
+                if rooms:
+                    ff.rooms = [(r[0], r[1], r[2], r[3]) for r in rooms]
+                    break
+        page = docs[fi][pi_]
+        H, V, curves = _segments(page)
+        # keep only geometry inside the region framed by this plan's own
+        # dimension strings and room labels - drops the sheet border, title
+        # block, north arrow and neighbouring drawings
+        anchors = [ln for ln in vlines if _single_dim_ft(ln.text)]
+        if len(anchors) >= 8:  # a real dimension ring around the plan
+            rx0, rx1 = min(a.x0 for a in anchors), max(a.x1 for a in anchors)
+            ry0, ry1 = min(a.y0 for a in anchors), max(a.y1 for a in anchors)
+            pad = 0.01 * max(page.rect.width, page.rect.height)
+            rx0, rx1, ry0, ry1 = rx0 - pad, rx1 + pad, ry0 - pad, ry1 + pad
+            H = [sg for sg in H if rx0 <= sg[1] and sg[2] <= rx1 and ry0 <= sg[0] <= ry1]
+            V = [sg for sg in V if ry0 <= sg[1] and sg[2] <= ry1 and rx0 <= sg[0] <= rx1]
+            curves = [c for c in curves if rx0 <= c[0] and c[2] <= rx1 and ry0 <= c[1] and c[3] <= ry1]
+        if n_views > 1:
+            others = [c[4] for c in cands if c[2] == fi and c[3] == pi_]
+            page_views = [v for v in plan_candidates_all_views(plan_candidates, fi, pi_)] or others
+
+            def mine(x, y, _v=view, _pv=page_views):
+                return min(_pv, key=lambda pv: (pv.cx - x) ** 2 + (pv.cy - y) ** 2) is _v
+            H = [sg for sg in H if mine((sg[1] + sg[2]) / 2, sg[0])]
+            V = [sg for sg in V if mine(sg[0], (sg[1] + sg[2]) / 2)]
+            curves = [c for c in curves if mine((c[0] + c[2]) / 2, (c[1] + c[3]) / 2)]
         m = None
         if scale:
-            m = measure_plan(Hs, Vs, Cs, scale[1])
+            m = measure_plan(H, V, curves, scale[1])
             if m and not (300 <= m.width_ft * m.depth_ft <= 4000):
                 m = None  # scale note does not match the PDF's plotted size
             ff.scale_label = scale[0] if m else ""
-        if m is None and (Hs or Vs):
-            inferred = _infer_scale(Hs, Vs, Cs, plot_w)
+        if m is None:
+            cal = calibrate_scale(vlines, H, V)
+            if cal:
+                m = measure_plan(H, V, curves, cal[0])
+                if m and 300 <= m.width_ft * m.depth_ft <= 4000:
+                    ff.scale_label = f"calibrated from {cal[1]} of {cal[2]} dimension lines"
+                else:
+                    m = None
+        if m is None and (H or V):
+            inferred = _infer_scale(H, V, curves, plot_w)
             if inferred:
                 ff.scale_label, _, m = inferred
                 ff.scale_label += " (inferred)"
                 ff.geometry_confidence = ConfidenceLevel.LOW
+        for sh in facts.sheets:
+            if f"{sh.file_name} p{sh.page_no}" == src:
+                sh.has_vectors = bool(H or V)
         if m:
             ff.width_ft, ff.depth_ft = m.width_ft, m.depth_ft
             ff.wall_length_ft = m.wall_length_ft
@@ -654,22 +1023,30 @@ def analyze_package(files: List[dict], plot_width_hint_ft: Optional[float] = Non
             ff.thickness_breakdown = m.thickness_breakdown
             ff.doors = m.doors or None
             ff.covered_sqft, ff.covered_source = m.width_ft * m.depth_ft, "measured footprint"
-        stated = facts.plot.get(f"covered_{view.floor}_sqft")
+        ff.windows = windows_by_floor.get(floor)
+        stated = facts.plot.get(f"covered_{floor}_sqft")
         if stated:
-            if ff.covered_sqft and abs(stated[0] - ff.covered_sqft) / stated[0] > 0.10:
+            if plot_area and stated[0] > plot_area * 1.02 and floor in ("ground", "basement"):
                 facts.conflicts.append(
-                    f"{FLOOR_NAMES[view.floor]}: stated covered area {stated[0]:,.0f} sqft vs measured footprint "
-                    f"{ff.covered_sqft:,.0f} sqft - the stated figure is used."
+                    f"{FLOOR_NAMES[floor]}: the area statement gives {_area_t(stated[0], unit_system)}, larger than the whole plot "
+                    f"({_area_t(plot_area, unit_system)}) - impossible for a ground-floor footprint, so "
+                    + (f"the measured footprint ({_area_t(ff.covered_sqft, unit_system)}) is used." if ff.covered_sqft else "it is ignored.")
                 )
-            ff.covered_sqft, ff.covered_source = stated[0], f"stated on drawing ({stated[1]})"
+            else:
+                if ff.covered_sqft and abs(stated[0] - ff.covered_sqft) / stated[0] > 0.10:
+                    facts.conflicts.append(
+                        f"{FLOOR_NAMES[floor]}: stated covered area {_area_t(stated[0], unit_system)} vs measured footprint "
+                        f"{_area_t(ff.covered_sqft, unit_system)} - the stated figure is used."
+                    )
+                ff.covered_sqft, ff.covered_source = stated[0], f"stated on drawing ({stated[1]})"
         if ff.covered_sqft and ff.rooms:
             room_area = sum(r[1] * r[2] for r in ff.rooms if r[3] != "open")
             if room_area > ff.covered_sqft * 1.05:
                 facts.conflicts.append(
-                    f"{FLOOR_NAMES[view.floor]}: room areas add up to {room_area:,.0f} sqft, more than the covered area "
-                    f"{ff.covered_sqft:,.0f} sqft - check the scale or the room labels."
+                    f"{FLOOR_NAMES.get(floor, floor)}: room areas add up to {_area_t(room_area, unit_system)}, more than the covered area "
+                    f"{_area_t(ff.covered_sqft, unit_system)} - check the scale or the room labels."
                 )
-        facts.floors[view.floor] = ff
+        facts.floors[floor] = ff
         sheet = next((sh for sh in facts.sheets if f"{sh.file_name} p{sh.page_no}" == src), None)
         if sheet is not None:
             Ar = (lambda sq: f"{sq:,.0f} sqft") if units.is_fps(unit_system) else (lambda sq: f"{sq * SQFT:,.1f} m²")
@@ -679,19 +1056,33 @@ def analyze_package(files: List[dict], plot_width_hint_ft: Optional[float] = Non
             if ff.wall_length_ft:
                 bits.append(f"walls {units.length_text(ff.wall_length_ft * FT, unit_system, f'{ff.wall_length_ft * FT:.1f} m')}")
             if ff.doors:
-                bits.append(f"{ff.doors} doors")
+                bits.append(f"{ff.doors} door swings")
             if ff.rooms:
                 bits.append(f"{len(ff.rooms)} rooms ({ff.count('bathroom')} bath, {ff.count('kitchen')} kitchen)")
+            if ff.windows:
+                bits.append(f"{ff.windows} windows")
             if ff.scale_label:
                 bits.append(f"scale {ff.scale_label}")
-            sheet.findings.append(f"{FLOOR_NAMES[view.floor]}: " + (", ".join(bits) if bits else "no measurable geometry"))
+            sheet.findings.append(f"{FLOOR_NAMES.get(floor, floor)}: " + (", ".join(bits) if bits else "no measurable geometry"))
+    for doc in docs.values():
+        doc.close()
 
-    _cross_check(facts)
+    _cross_check(facts, unit_system)
     return facts
 
 
-def _cross_check(facts: PackageFacts) -> None:
-    lv = facts.section.get("levels_storeys")
+def plan_candidates_all_views(plan_candidates: Dict[str, list], fi: int, pi_: int) -> List[View]:
+    return [c[4] for cands in plan_candidates.values() for c in cands if c[2] == fi and c[3] == pi_]
+
+
+def _cross_check(facts: PackageFacts, unit_system: str = "FPS") -> None:
+    ep, sp = facts.elevation.get("plinth_height_ft"), facts.section.get("plinth_height_ft")
+    if ep and sp and abs(ep[0] - sp[0]) > 1 / 24:
+        facts.conflicts.append(
+            f"Plinth height differs between sheets: {_len_t(ep[0], unit_system)} on the elevation ({ep[1]}) vs "
+            f"{_len_t(sp[0], unit_system)} on the section/foundation detail ({sp[1]}) - the elevation value is used; please confirm."
+        )
+    lv = facts.section.get("levels_storeys") or facts.elevation.get("levels_storeys")
     if lv and facts.storeys and int(lv[0]) != facts.storeys:
         facts.conflicts.append(
             f"The section shows {int(lv[0])} storey level(s) but {facts.storeys} floor plan(s) were found - "
@@ -702,10 +1093,12 @@ def _cross_check(facts: PackageFacts) -> None:
         facts.conflicts.append(f"Foundation plan shows {fc[0]:g} footings but {cc[0]:g} columns.")
     pw = facts.plot.get("plot_width_ft")
     for ff in facts.floors.values():
+        if ff.floor not in ("ground", "basement"):
+            continue  # upper floors often cantilever over the street (balconies)
         if pw and ff.width_ft and min(ff.width_ft, ff.depth_ft) > pw[0] * 1.05:
             facts.conflicts.append(
-                f"{FLOOR_NAMES.get(ff.floor, ff.floor)} footprint ({min(ff.width_ft, ff.depth_ft):.1f} ft wide) is wider "
-                f"than the plot ({pw[0]:.1f} ft) - check the drawing scale."
+                f"{FLOOR_NAMES.get(ff.floor, ff.floor)} footprint ({_len_t(min(ff.width_ft, ff.depth_ft), unit_system)} wide) is wider "
+                f"than the plot ({_len_t(pw[0], unit_system)}) - check the drawing scale."
             )
     areas = [f.covered_sqft for k, f in facts.floors.items() if k in FLOOR_ORDER and f.covered_sqft]
     if len(areas) > 1 and (max(areas) - min(areas)) / max(areas) > 0.10:
@@ -822,12 +1215,87 @@ def apply_package_facts(
             setattr(obj, attr, est(value, ConfidenceLevel.HIGH, f"{label} from structural sheet ({src})"))
             filled.append(label)
 
+    # ---- strip (load-bearing) foundations --------------------------------
+    from engineering import rules as _rules
+
+    det = _rules.detailing(us)
+    fnd = facts.foundation
+    if "strip" in fnd:
+        src = fnd["strip"][1]
+        p.footings.footing_type = "strip"
+        if "strip_width_ft" in fnd:
+            p.footings.width_m = est(fnd["strip_width_ft"][0] * FT, ConfidenceLevel.MEDIUM,
+                                     f"strip foundation (PCC) width {L(fnd['strip_width_ft'][0])} from foundation details ({src})")
+        else:
+            p.footings.width_m = Estimate(value=det["strip_width_m"], confidence=ConfidenceLevel.LOW, source=Source.DEFAULT_ASSUMPTION,
+                                          note="Typical strip foundation width - verify")
+        p.footings.depth_m = Estimate(value=det["strip_pcc_thickness_m"], confidence=ConfidenceLevel.LOW, source=Source.DEFAULT_ASSUMPTION,
+                                      note="Typical PCC bed thickness under strip foundations - verify on the foundation detail")
+        if "founding_depth_ft" in fnd:
+            v = fnd["founding_depth_ft"][0]
+            p.footings.founding_depth_m = est(v * FT, ConfidenceLevel.MEDIUM, f"{L(v)} foundation depth from foundation details ({src})")
+            filled.append("founding depth")
+        if "column_count" not in facts.structural:
+            p.columns.count = Estimate(value=4, confidence=ConfidenceLevel.LOW, source=Source.DEFAULT_ASSUMPTION,
+                                       note="Load-bearing house: only a few RCC columns (porch / large openings) - count them on the drawings")
+        p.beams.count = Estimate(value=4, confidence=ConfidenceLevel.LOW, source=Source.DEFAULT_ASSUMPTION,
+                                 note="Load-bearing house: RCC beams only over large openings - verify")
+        filled += ["foundation type (strip / load-bearing)", "strip foundation width", "footing width", "footing thickness"]
+
+    # ---- door schedule / windows ------------------------------------------
+    op = facts.openings
+    n_floors = max(len(floors), 1) if floors else max(int(round(p.num_floors.value)), 1)
+    if "doors_total" in op:
+        total, src = op["doors_total"]
+        p.openings.door_count_per_floor = est(total / n_floors, ConfidenceLevel.HIGH, f"{total:g} doors in the door schedule ({src}) / {n_floors} floor(s)")
+        if "doors per floor" not in filled:
+            filled.append("doors per floor")
+    if "door_area_sqft" in op:
+        a, src = op["door_area_sqft"]
+        p.openings.avg_door_area_sqm = est(a * SQFT, ConfidenceLevel.HIGH, f"average door size {Ar(a)} from the door schedule ({src})")
+        filled.append("average door area")
+    win = [op[f"windows_{f.floor}"][0] for f in floors if f"windows_{f.floor}" in op]
+    if win:
+        p.openings.window_count_per_floor = est(sum(win) / len(win), ConfidenceLevel.MEDIUM, "windows tagged with sill levels on the doors & windows plans")
+        filled.append("windows per floor")
+
+    # ---- heights from elevation dimension chains ----------------------------
+    ev = facts.elevation
+    if "floor_height_ft" in ev and "floor_height_ft" not in facts.section:
+        v, src = ev["floor_height_ft"]
+        agree = int(ev.get("sheets_agreeing", (1, ""))[0])
+        conf = ConfidenceLevel.HIGH if agree >= 2 else ConfidenceLevel.MEDIUM
+        note = f"{L(v)} floor-to-floor from the elevation dimension chain ({src}; {agree} sheet(s) agree)"
+        p.columns.height_per_floor_m = est(v * FT, conf, note)
+        p.walls.height_m = est(v * FT, conf, note)
+        filled.append("floor height")
+    if "slab_thickness_ft" in ev and "slab_thickness_ft" not in facts.section:
+        v, src = ev["slab_thickness_ft"]
+        p.slabs.thickness_m = est(v * FT, ConfidenceLevel.MEDIUM, f"slab thickness from the elevation dimension chain ({src})")
+        filled.append("slab thickness")
+    if "plinth_height_ft" in ev:
+        asm["plinth_height_m"] = ev["plinth_height_ft"][0] * FT
+        if "plinth height" not in filled:
+            filled.append("plinth height")
+
+    # ---- marla standard / plot ----------------------------------------------
+    pa, mr = facts.plot.get("plot_area_sqft"), facts.plot.get("marla")
+    if pa and mr and mr[0] > 0:
+        per_marla = pa[0] / mr[0]
+        for std, label in ((225.0, "society (225 sqft)"), (272.25, "traditional (272.25 sqft)")):
+            if abs(per_marla - std) / std <= 0.03 and abs(project_inputs.marla_sqft - std) > 0.01 and project_inputs.plot_marla:
+                note = (f"The drawings give a {mr[0]:g} marla plot of {pa[0]:,.0f} sqft = {per_marla:.1f} sqft per marla, i.e. the "
+                        f"{label} marla - set 'Marla standard' in Step 1 to match (currently {project_inputs.marla_sqft:g}).")
+                if note not in facts.conflicts:
+                    facts.conflicts.append(note)
+
     # AI-missing fields that the drawings supplied are no longer missing.
     field_to_filled = {
         "number of floors": "number of floors", "plinth area": "covered / slab area", "slab area": "covered / slab area",
         "total wall length": "total wall length", "external perimeter": "external perimeter",
         "wall thickness": "average wall thickness", "door count": "doors per floor", "bathroom count": "bathrooms",
         "kitchen count": "kitchens", "height per floor": "floor height", "wall height": "floor height",
+        "door area": "average door area", "window count": "windows per floor",
         "slab thickness": "slab thickness", "founding depth": "founding depth", "footing count": "footing count",
         "footing length": "footing length", "footing width": "footing width", "footing thickness": "footing thickness",
         "column count": "column count", "column width": "column width", "column depth": "column depth",
@@ -836,7 +1304,8 @@ def apply_package_facts(
     for w in p.extraction_warnings:
         m = re.match(r"(AI did not return: |AI values were unreadable for: )(.*) - (.*) used\.$", w)
         if m:
-            left = [f for f in m.group(2).split(", ") if field_to_filled.get(f) not in filled]
+            not_applicable = {"footing count", "footing length"} if p.footings.footing_type == "strip" else set()
+            left = [f for f in m.group(2).split(", ") if field_to_filled.get(f) not in filled and f not in not_applicable]
             if not left:
                 continue
             w = f"{m.group(1)}{', '.join(left)} - {m.group(3)} used."
@@ -870,9 +1339,20 @@ def apply_package_facts(
 def pages_for_ai(facts: PackageFacts, limit: int) -> List[Tuple[int, int]]:
     """Most useful pages to show the AI: ground plan, section, other plans,
     elevation, then unrecognised pages (e.g. scans)."""
-    rank = {"plan:ground": 0, "section:": 1, "plan:first": 2, "plan:second": 3, "elevation:": 4, "plan:basement": 5, "unknown": 6}
-    ordered = sorted(facts.page_kinds.items(), key=lambda kv: rank.get(kv[1], 9))
-    return [k for k, v in ordered if rank.get(v, 9) < 9][:limit]
+    rank = {"plan:ground": 0, "section:": 1, "plan:first": 2, "elevation:": 3, "plan:second": 4, "plan:basement": 5, "unknown": 6}
+    best = set(facts.best_plan_page.values())
+    ordered = sorted(facts.page_kinds.items(), key=lambda kv: (rank.get(kv[1], 9), kv[0] not in best, kv[0]))
+    picked, seen = [], set()
+    for k, v in ordered:
+        if rank.get(v, 9) >= 9:
+            continue
+        if v != "unknown" and v in seen:
+            continue  # one page per view (e.g. not three variants of the ground plan)
+        if v.startswith("plan:") and facts.best_plan_page and k not in best and v.split(":")[1] in facts.best_plan_page:
+            continue
+        seen.add(v)
+        picked.append(k)
+    return picked[:limit]
 
 
 def render_pages(file_bytes: bytes, page_indices: List[int], dpi: int = 150):
