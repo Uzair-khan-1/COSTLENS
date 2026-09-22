@@ -159,10 +159,13 @@ def _map_json_to_params(
     raw: dict,
     wall_thickness_mm: float = 230.0,
     wall_material: str = rules.DEFAULT_WALL_MATERIAL,
+    unit_system: str = "SI",
 ) -> ExtractedBuildingParams:
     if not isinstance(raw, dict):
         raise ValueError("AI response is not a JSON object")
-    d = default_building_params(wall_thickness_mm, wall_material)
+    # Fields the AI leaves out fall back to the project's unit-system
+    # defaults (e.g. 4'-0" footings in FPS rather than 1.2 m).
+    d = default_building_params(wall_thickness_mm, wall_material, unit_system)
     r = _FieldReader(raw)
     top = raw
     f, c, b, s, w, o = (r.section(k) for k in ("footings", "columns", "beams", "slabs", "walls", "openings"))
@@ -227,9 +230,72 @@ def _map_json_to_params(
     return params
 
 
+# FPS defaults: the same typical small house as the SI defaults below, but
+# expressed in the round feet-inch values Pakistani drawings actually use
+# (stored in metres, exact conversions: 1 ft = 0.3048 m, 1 in = 0.0254 m).
+_FT = 0.3048
+_IN = 0.0254
+_SQFT = _FT * _FT
+
+
+def _default_building_params_fps(wall_thickness_mm: float, wall_material: str) -> ExtractedBuildingParams:
+    def est(v: float, note: str = "Standard default - please verify") -> Estimate:
+        return Estimate(value=v, confidence=ConfidenceLevel.LOW, source=Source.DEFAULT_ASSUMPTION, note=note)
+
+    det = rules.detailing("FPS")
+    return ExtractedBuildingParams(
+        num_floors=est(1, "Default: single storey"),
+        plinth_area_per_floor_sqm=est(1080 * _SQFT, "Default: 1,080 sqft covered area (30' x 36')"),
+        footings=FootingSpec(
+            footing_type="isolated",
+            count=est(9, "Default: 3x3 column grid"),
+            length_m=est(4 * _FT, "Default: 4'-0\" x 4'-0\" isolated footing"),
+            width_m=est(4 * _FT, "Default: 4'-0\" x 4'-0\" isolated footing"),
+            depth_m=est(det["footing_thickness_m"], "Footing (pad) thickness 1'-6\" - standard default, please verify"),
+            founding_depth_m=est(det["founding_depth_m"], "Ground level to underside of footing 5'-0\" - standard default, please verify"),
+        ),
+        columns=ColumnSpec(
+            count=est(9, "Default: 3x3 column grid"),
+            width_m=est(9 * _IN, "Default: 9\" x 18\" column"),
+            depth_m=est(18 * _IN, "Default: 9\" x 18\" column"),
+            height_per_floor_m=est(10 * _FT, "Default: 10'-0\" floor-to-floor height"),
+        ),
+        beams=BeamSpec(
+            count=est(12, "Default: perimeter + a few internal beams"),
+            avg_length_m=est(13 * _FT, "Default: 13'-0\" average span"),
+            width_m=est(9 * _IN, "Default: 9\" x 18\" beam"),
+            depth_m=est(18 * _IN, "Default: 9\" x 18\" beam"),
+        ),
+        slabs=SlabSpec(
+            area_per_floor_sqm=est(1080 * _SQFT, "Default: 1,080 sqft slab"),
+            thickness_m=est(5 * _IN, "Default: 5\" RCC slab"),
+        ),
+        walls=WallSpec(
+            total_length_per_floor_m=est(250 * _FT, "Default: 132 ft perimeter + ~118 ft internal partitions for a ~1,080 sqft plan"),
+            height_m=est(10 * _FT, "Default: 10'-0\" wall height"),
+            thickness_m=est(wall_thickness_mm / 1000.0, "From Step 1 'Wall Thickness' selection"),
+            wall_material=wall_material,
+            external_perimeter_m=est(132 * _FT, "Default: 30' x 36' footprint perimeter (132 ft)"),
+        ),
+        openings=OpeningsSpec(
+            door_count_per_floor=est(4),
+            avg_door_area_sqm=est(21 * _SQFT, "3'-0\" x 7'-0\" standard door (21 sqft)"),
+            window_count_per_floor=est(5),
+            avg_window_area_sqm=est(16 * _SQFT, "4'-0\" x 4'-0\" standard window (16 sqft)"),
+        ),
+        services=ServicesSpec(
+            bathroom_count_total=est(2, "Default: 2 bathrooms"),
+            kitchen_count_total=est(1, "Default: 1 kitchen"),
+        ),
+        overall_notes="Default assumptions used (no AI extraction performed or extraction failed).",
+        extraction_warnings=["All values are generic defaults - please review and edit every field before proceeding."],
+    )
+
+
 def default_building_params(
     wall_thickness_mm: float = 230.0,
     wall_material: str = rules.DEFAULT_WALL_MATERIAL,
+    unit_system: str = "SI",
 ) -> ExtractedBuildingParams:
     """Fully-defaulted fallback used when AI extraction is unavailable or
     fails, and as the starting point for the 'skip AI, enter manually'
@@ -250,6 +316,8 @@ def default_building_params(
     """
     if wall_material not in rules.MASONRY_UNIT_SIZES_M:
         wall_material = rules.DEFAULT_WALL_MATERIAL
+    if unit_system == "FPS":
+        return _default_building_params_fps(wall_thickness_mm, wall_material)
     def est(v: float, note: str = "Standard default - please verify") -> Estimate:
         return Estimate(value=v, confidence=ConfidenceLevel.LOW, source=Source.DEFAULT_ASSUMPTION, note=note)
 
@@ -316,6 +384,7 @@ def extract_building_params(
     image_labels: List[str] | None = None,
     wall_thickness_mm: float = 230.0,
     wall_material: str = rules.DEFAULT_WALL_MATERIAL,
+    unit_system: str = "SI",
 ) -> Tuple[ExtractedBuildingParams, str, List[str]]:
     """Returns (params, raw_model_output_text, error_messages).
 
@@ -340,11 +409,11 @@ def extract_building_params(
         )
     except GroqClientError as exc:
         logger.warning("Groq call failed, using defaults: %s", exc)
-        return default_building_params(wall_thickness_mm, wall_material), "", [str(exc)]
+        return default_building_params(wall_thickness_mm, wall_material, unit_system), "", [str(exc)]
 
     try:
         raw_json = json.loads(_strip_code_fences(raw_text or ""))
-        params = _map_json_to_params(raw_json, wall_thickness_mm, wall_material)
+        params = _map_json_to_params(raw_json, wall_thickness_mm, wall_material, unit_system)
         return params, raw_text, errors
     except (json.JSONDecodeError, KeyError, ValueError, TypeError, AttributeError, ValidationError) as exc:
         logger.warning("Failed to parse/validate Groq JSON output, using defaults: %s", exc)
@@ -353,4 +422,4 @@ def extract_building_params(
             f"({type(exc).__name__}: {exc}). Falling back to standard defaults - "
             "please review and edit every field below."
         )
-        return default_building_params(wall_thickness_mm, wall_material), raw_text, errors
+        return default_building_params(wall_thickness_mm, wall_material, unit_system), raw_text, errors

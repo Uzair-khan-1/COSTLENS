@@ -11,7 +11,9 @@ from __future__ import annotations
 RESPONSE_JSON_SCHEMA_DESCRIPTION = """
 Respond with ONLY a single compact JSON object (no markdown fences, no
 commentary, no extra whitespace/indentation). All lengths in METRES and areas in
-SQUARE METRES (convert feet/inches if the drawing uses them). Every leaf
+SQUARE METRES (convert feet/inches if the drawing uses them - Pakistani
+drawings are usually dimensioned in feet-inches, e.g. 12'-6" or 9"; convert
+exactly with 1 ft = 0.3048 m, 1 in = 0.0254 m, 1 sqft = 0.092903 sqm). Every leaf
 numeric field must be a 2-element array: [value, confidence_code] where confidence_code is
 exactly one letter: "H" (High), "M" (Medium), or "L" (Low). Do NOT add a
 "note" field per value - keep it to just [value, code].

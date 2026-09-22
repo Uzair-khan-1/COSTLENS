@@ -193,7 +193,7 @@ mto_boq_estimator/
 │   └── theme.py                # CostLens CSS injection + hero/step-tracker helpers
 ├── utils/
 │   ├── helpers.py              # Small shared utilities
-│   └── units.py                # SI <-> FPS display/input conversion layer
+│   └── units.py                # SI <-> FPS conversion, feet-inch formatting, trace localisation
 ├── data/
 │   ├── material_rates.json     # Default rate book (PKR, editable in-app)
 │   └── default_assumptions.json# Default engineering assumptions
@@ -204,25 +204,38 @@ mto_boq_estimator/
 
 ## 3a. Units & currency
 
-The app always **calculates internally in SI/metric units** (m, m², m³, kg) -
-that never changes. What the user sees is controlled by a per-project
-**Unit System** toggle in Step 1:
+**FPS is the default** (Pakistani practice). The Unit System toggle in Step 1
+switches the whole project between two complete systems:
 
-- **SI (Metric)** - dimensions entered/shown in metres, m², m³.
-- **FPS (Feet-Inch, Pakistani practice)** - dimensions entered/shown in feet
-  (lengths/heights), inches (slab/wall thickness, column & beam
-  cross-sections - matching how these are conventionally quoted on-site),
-  square feet (areas) and cubic feet (concrete/excavation quantities in the
-  MTO/BOQ). Steel is always quoted/priced in **kg** in either system, since
-  that's how it's bought in Pakistan regardless of which system the rest of
-  the job is measured in.
+- **FPS (Feet-Inch, Pakistani practice, default)** - lengths/heights in feet
+  (shown in feet-inch notation such as `10'-0"` in text), member sizes and
+  thicknesses in inches (9" walls, 5" slab, 9"x18" columns), areas in sqft,
+  volumes in cft, rates per cft/sqft, concrete grades in psi (3000 psi,
+  1500 psi PCC), steel as Grade 40/60/75, thumb-rule steel in kg/cft.
+  Defaults are true Pakistani round values - a 1,080 sqft plan, 4'-0" x
+  4'-0" x 1'-6" footings at 5'-0" founding depth, 10'-0" floor height, 3'x7'
+  doors, 4'x4' windows, 6" lintels, 3" PCC, 2'-0" plinth, 3'-0" parapet
+  (`engineering/rules.py` `DETAILING["FPS"]`).
+- **SI (Metric)** - metres, m², m³, M-grades, Fe-grade steel, kg/m³, with the
+  metric defaults (100 m² plan, 1.2 m footings, 150 mm lintels, ...).
 
-Switching the toggle never changes a single underlying number or the final
-cost - it only changes how values are displayed and entered. The rate-book
-editor (Step 5) shows/accepts rates per cft or sqft when FPS is selected,
-but stores them internally per m³/m² so the BOQ math is identical either
-way (see `utils/units.py` for the conversion functions and the invariant
-this relies on: `display_quantity × display_rate == amount`, always).
+In FPS mode **everything** is FPS: Step-3 inputs, calculation traces
+(`footing_length_ft`, `working_space_in`, ...), formulas, descriptions,
+assumption notes, validation messages, rate remarks, the Step 4/5 tables and
+the Excel/PDF exports. Steel is quoted in **kg** and cement in **bags** in both
+systems, since that's how they're bought in Pakistan.
+
+Numbers are stored in one canonical base (metres) and converted exactly
+(1 ft = 0.3048 m, 1 in = 0.0254 m). In FPS mode, volumes/areas are rounded
+in cft/sqft, not in m³ first, so every FPS figure equals a direct feet-inch
+hand calculation - `tests/test_fps_system.py` checks this item by item.
+
+Each system uses its own round standard details (e.g. 6" lintel vs 150 mm),
+so the same building can differ by a fraction of a percent between the two
+(tested to stay under 0.5%). Rates are stored per m³/m² and shown per
+cft/sqft in FPS, so `display_quantity × display_rate == amount` always holds.
+Switching the unit system mid-project swaps untouched defaults to the new
+system's values and clears the previous MTO/BOQ so they are regenerated.
 
 The default rate book (`data/material_rates.json`) is priced in **PKR**,
 built from published September-2026 Pakistani market prices for cement,
@@ -462,6 +475,17 @@ in-app and are fully editable before the BOQ is generated.
 - BOQ auto-recalculates; exports cached; Excel BOQ uses live formulas.
 - Pinned dependencies; deprecated Streamlit `use_container_width` removed.
 - Range/benchmark regression tests (`tests/test_accuracy_and_regressions.py`).
+
+**v0.4.0 - FPS update**
+- FPS (feet-inch, Pakistani practice) is now the default unit system, with
+  psi concrete grades, Grade 60 steel, 9" walls, ½"/¾" plaster and round
+  feet-inch default dimensions and standard details.
+- Complete FPS output: inputs, calculation traces, formulas, descriptions,
+  assumptions, validation messages, rate remarks, Step 4/5 screens, Excel
+  and PDF. FPS volumes/areas are rounded in cft/sqft.
+- SI output is unchanged (verified byte-for-byte against the previous build).
+- New `tests/test_fps_system.py`: independent feet-inch hand calculations,
+  metric-leak scan of all FPS outputs, and cross-system checks.
 
 ## 9. Roadmap ideas (post-MVP)
 

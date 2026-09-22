@@ -323,3 +323,93 @@ FINISH_LEVEL_RATE_MULTIPLIERS = {
     "Premium": {"Flooring": 1.85, "Painting": 1.65, "Plaster": 1.20, "Doors": 2.55, "Windows": 2.05,
                 "Electrical": 1.50, "Plumbing & Sanitary": 1.90, "Kitchen": 2.20},
 }
+
+
+# --------------------------------------------------------------------------
+# Standard detailing dimensions per unit system
+# --------------------------------------------------------------------------
+# SI uses the metric constants defined above, unchanged. FPS (the default,
+# Pakistani practice) uses the equivalent ROUND feet-inch values that
+# Pakistani drawings actually specify - e.g. a 6" lintel, 7'-0" door, 5'-0"
+# founding depth - instead of odd conversions like 5.91" or 6'-10.68".
+# Values are stored in metres (exact inch conversions: 1" = 0.0254 m).
+_IN = 0.0254
+_FT = 12 * _IN
+
+DETAILING = {
+    "SI": {
+        "pcc_projection_m": PCC_PROJECTION_BEYOND_FOOTING_M,
+        "dpc_thickness_m": DPC_THICKNESS_M,
+        "gf_soling_thickness_m": GF_SOLING_THICKNESS_M,
+        "gf_pcc_floor_thickness_m": GF_PCC_FLOOR_THICKNESS_M,
+        "stair_width_m": STAIR_WIDTH_M,
+        "stair_waist_m": STAIR_WAIST_M,
+        "stair_max_riser_m": STAIR_MAX_RISER_M,
+        "stair_tread_m": STAIR_TREAD_M,
+        "stair_landing_gap_m": STAIR_LANDING_GAP_M,
+        "lintel_depth_m": LINTEL_DEPTH_M,
+        "lintel_bearing_m": LINTEL_BEARING_M,
+        "door_height_m": DOOR_HEIGHT_M,
+        "chajja_projection_m": CHAJJA_PROJECTION_M,
+        "chajja_avg_thickness_m": CHAJJA_AVG_THICKNESS_M,
+        "ceiling_plaster_thickness_m": CEILING_PLASTER_THICKNESS_MM / 1000.0,
+        "founding_depth_m": DEFAULT_FOUNDING_DEPTH_M,
+        "footing_thickness_m": DEFAULT_FOOTING_THICKNESS_M,
+    },
+    "FPS": {
+        "pcc_projection_m": 3 * _IN,  # 3"
+        "dpc_thickness_m": 1 * _IN,  # 1"
+        "gf_soling_thickness_m": 3 * _IN,  # 3" flat brick soling
+        "gf_pcc_floor_thickness_m": 3 * _IN,  # 3" PCC floor base
+        "stair_width_m": 3 * _FT + 6 * _IN,  # 3'-6"
+        "stair_waist_m": 6 * _IN,  # 6"
+        "stair_max_riser_m": 7 * _IN,  # 7"
+        "stair_tread_m": 10 * _IN,  # 10"
+        "stair_landing_gap_m": 4 * _IN,  # 4"
+        "lintel_depth_m": 6 * _IN,  # 6"
+        "lintel_bearing_m": 6 * _IN,  # 6"
+        "door_height_m": 7 * _FT,  # 7'-0"
+        "chajja_projection_m": 18 * _IN,  # 1'-6"
+        "chajja_avg_thickness_m": 3 * _IN,  # 3"
+        "ceiling_plaster_thickness_m": 0.375 * _IN,  # 3/8"
+        "founding_depth_m": 5 * _FT,  # 5'-0"
+        "footing_thickness_m": 18 * _IN,  # 1'-6"
+    },
+}
+
+# Engineering-assumption defaults (Step 3 panel) per unit system. Steel
+# thumb rules are the same physical values in both (the FPS panel shows
+# them converted to kg/cft).
+ASSUMPTION_DIMENSION_DEFAULTS = {
+    "SI": {
+        "pcc_thickness_m": DEFAULT_PCC_THICKNESS_M,
+        "plinth_height_m": DEFAULT_PLINTH_HEIGHT_M,
+        "excavation_working_space_m": EXCAVATION_WORKING_SPACE_M,
+        "parapet_height_m": DEFAULT_PARAPET_HEIGHT_M,
+    },
+    "FPS": {
+        "pcc_thickness_m": 3 * _IN,  # 3"
+        "plinth_height_m": 2 * _FT,  # 2'-0"
+        "excavation_working_space_m": 6 * _IN,  # 6"
+        "parapet_height_m": 3 * _FT,  # 3'-0"
+    },
+}
+
+
+def detailing(unit_system: str = "SI") -> dict:
+    """Standard detailing dimensions (metres) for the project's unit system."""
+    return DETAILING.get(unit_system, DETAILING["SI"])
+
+
+def grade_label_for_system(label: str, options: dict, unit_system: str) -> str:
+    """Maps a grade label from either unit system's list onto the
+    equivalent label of `unit_system` (lists are index-aligned); unknown
+    labels are returned unchanged."""
+    target = options.get(unit_system)
+    if not target:
+        return label
+    for lst in options.values():
+        if label in lst:
+            idx = lst.index(label)
+            return target[idx] if idx < len(target) else label
+    return label

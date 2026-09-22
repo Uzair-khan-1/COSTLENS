@@ -66,7 +66,7 @@ def _write_cover_sheet(wb: Workbook, project_inputs: ProjectInputs, cost_summary
         ("Soil Type", project_inputs.soil_type),
         ("Concrete Grade (Footing/Column/Beam/Slab)", f"{project_inputs.concrete_grade_footing} / {project_inputs.concrete_grade_column} / {project_inputs.concrete_grade_beam} / {project_inputs.concrete_grade_slab}"),
         ("Steel Grade", project_inputs.steel_grade),
-        ("Wall Material", project_inputs.wall_material),
+        ("Wall Material", units.relabel_wall_material(project_inputs.wall_material, project_inputs.unit_system)),
         ("Finish Level", project_inputs.finish_level),
         ("Unit System", units.UNIT_SYSTEM_LABELS.get(project_inputs.unit_system, project_inputs.unit_system)),
         ("", ""),
@@ -97,10 +97,17 @@ def _write_cover_sheet(wb: Workbook, project_inputs: ProjectInputs, cost_summary
 
 def _write_mto_sheet(wb: Workbook, mto_items: List[QuantityLineItem], unit_system: str = units.SI):
     ws = wb.create_sheet("MTO")
-    ws.append([
-        f"Quantities shown in {units.UNIT_SYSTEM_LABELS.get(unit_system, unit_system)}. "
-        "All calculations are performed internally in SI/metric units; Formula/Key Inputs Used describe that underlying metric arithmetic."
-    ])
+    if units.is_fps(unit_system):
+        note = (
+            f"Quantities shown in {units.UNIT_SYSTEM_LABELS.get(unit_system, unit_system)}. "
+            "Formula, Key Inputs Used and Assumptions are all in FPS (ft, in, sqft, cft; steel in kg, cement in bags)."
+        )
+    else:
+        note = (
+            f"Quantities shown in {units.UNIT_SYSTEM_LABELS.get(unit_system, unit_system)}. "
+            "All calculations are performed internally in SI/metric units; Formula/Key Inputs Used describe that underlying metric arithmetic."
+        )
+    ws.append([note])
     ws["A1"].font = SUBTITLE_FONT
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=9)
     headers = ["Item Code", "Category", "Description", "Unit", "Quantity", "Confidence", "Formula", "Key Inputs Used", "Assumptions"]

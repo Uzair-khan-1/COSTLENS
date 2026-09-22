@@ -14,9 +14,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ConfidenceLevel(str, Enum):
@@ -33,11 +33,11 @@ class Source(str, Enum):
 
 
 class UnitSystem(str, Enum):
-    """Which unit system the user sees on input/output screens and in the
-    exported MTO/BOQ. Every internal calculation in engineering/ and
-    mto_boq/ ALWAYS operates in SI (m, m2, m3, kg) regardless of this
-    setting - conversion happens only in the UI/export display layer
-    (see utils/units.py)."""
+    """The project's unit system. FPS (feet-inch, Pakistani practice) is the
+    default. Values are STORED in one canonical base (m, m2, m3, kg) and
+    converted exactly; in FPS mode every input, default, calculation trace,
+    text and export is produced in FPS (see utils/units.py and
+    engineering/rules.py DETAILING)."""
 
     SI = "SI"
     FPS = "FPS"
@@ -155,21 +155,67 @@ class ExtractedBuildingParams(BaseModel):
 # --------------------------------------------------------------------------
 
 
+# Per-unit-system defaults for the ProjectInputs fields whose natural value
+# differs between SI and FPS (grade labels, wall/plaster thickness). FPS is
+# the default system (Pakistani practice). Kept here (not imported from
+# engineering/ or utils/) so this module stays dependency-free.
+_UNIT_SYSTEM_DEFAULTS = {
+    "SI": {
+        "concrete_grade_footing": "M20",
+        "concrete_grade_column": "M20",
+        "concrete_grade_beam": "M20",
+        "concrete_grade_slab": "M20",
+        "pcc_grade": "M10",
+        "steel_grade": "Fe415",
+        "wall_thickness_mm": 230,
+        "plaster_thickness_internal_mm": 12,
+        "plaster_thickness_external_mm": 18,
+    },
+    "FPS": {
+        "concrete_grade_footing": "3000 psi",
+        "concrete_grade_column": "3000 psi",
+        "concrete_grade_beam": "3000 psi",
+        "concrete_grade_slab": "3000 psi",
+        "pcc_grade": "1500 psi",
+        "steel_grade": "Grade 60 (60,000 psi)",
+        "wall_thickness_mm": 228.6,  # 9"
+        "plaster_thickness_internal_mm": 12.7,  # 1/2"
+        "plaster_thickness_external_mm": 19.05,  # 3/4"
+    },
+}
+# Index-aligned grade lists (mirror engineering/rules.py *_GRADE_OPTIONS).
+_GRADE_LISTS = {
+    "concrete": {"SI": ["M10", "M15", "M20", "M25"], "FPS": ["1500 psi", "2200 psi", "3000 psi", "3600 psi"]},
+    "pcc": {"SI": ["M7.5", "M10", "M15"], "FPS": ["1100 psi", "1500 psi", "2200 psi"]},
+    "steel": {"SI": ["Fe250", "Fe415", "Fe500"], "FPS": ["Grade 40 (40,000 psi)", "Grade 60 (60,000 psi)", "Grade 75 (75,000 psi)"]},
+}
+_GRADE_FIELDS = {
+    "concrete_grade_footing": "concrete",
+    "concrete_grade_column": "concrete",
+    "concrete_grade_beam": "concrete",
+    "concrete_grade_slab": "concrete",
+    "pcc_grade": "pcc",
+    "steel_grade": "steel",
+}
+
+
 class ProjectInputs(BaseModel):
     project_name: str = "Untitled Project"
     client_name: str = ""
     location: str = ""
     soil_type: str = "Ordinary soil"  # Soft/Ordinary/Hard/Murrum/Rock
-    concrete_grade_footing: str = "M20"
-    concrete_grade_column: str = "M20"
-    concrete_grade_beam: str = "M20"
-    concrete_grade_slab: str = "M20"
-    pcc_grade: str = "M10"
-    steel_grade: str = "Fe415"  # Fe415 ~ Grade 60 (see engineering/rules.py STEEL_GRADE_OPTIONS)
+    # Grade / thickness defaults depend on unit_system - see
+    # _UNIT_SYSTEM_DEFAULTS and _apply_unit_system_defaults below.
+    concrete_grade_footing: str = "3000 psi"
+    concrete_grade_column: str = "3000 psi"
+    concrete_grade_beam: str = "3000 psi"
+    concrete_grade_slab: str = "3000 psi"
+    pcc_grade: str = "1500 psi"
+    steel_grade: str = "Grade 60 (60,000 psi)"  # ~ Fe415 (see engineering/rules.py STEEL_GRADE_OPTIONS)
     wall_material: str = "Burnt clay brick (modular 190x90x90mm)"
-    wall_thickness_mm: int = 230
-    plaster_thickness_internal_mm: int = 12
-    plaster_thickness_external_mm: int = 18
+    wall_thickness_mm: Union[int, float] = 228.6
+    plaster_thickness_internal_mm: Union[int, float] = 12.7
+    plaster_thickness_external_mm: Union[int, float] = 19.05
     finish_level: str = "Standard"  # Basic | Standard | Premium
     include_flooring: bool = True
     include_waterproofing: bool = True
@@ -182,7 +228,31 @@ class ProjectInputs(BaseModel):
     include_roof_treatment: bool = True  # roof insulation (mud fill) + brick/tuff tiles
     contingency_pct: float = 5.0
     currency: str = "PKR"
-    unit_system: str = UnitSystem.SI.value  # "SI" or "FPS" - see UnitSystem
+    unit_system: str = UnitSystem.FPS.value  # "FPS" (default, Pakistani practice) or "SI" - see UnitSystem
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_unit_system_defaults(cls, data: Any) -> Any:
+        """Fields not supplied get the defaults of the chosen unit system
+        (so ProjectInputs(unit_system="SI") is exactly the metric setup and
+        ProjectInputs() the FPS one), and grade labels given in the other
+        system are mapped to their equivalent (e.g. "M20" -> "3000 psi")."""
+        if not isinstance(data, dict):
+            return data
+        data = dict(data)
+        us = data.get("unit_system", UnitSystem.FPS.value)
+        if us not in _UNIT_SYSTEM_DEFAULTS:
+            return data
+        for field, default in _UNIT_SYSTEM_DEFAULTS[us].items():
+            if field not in data:
+                data[field] = default
+        for field, kind in _GRADE_FIELDS.items():
+            label = data.get(field)
+            lists = _GRADE_LISTS[kind]
+            for other_us, lst in lists.items():
+                if other_us != us and label in lst:
+                    data[field] = lists[us][lst.index(label)]
+        return data
 
 
 class EngineeringAssumptions(BaseModel):
@@ -201,6 +271,22 @@ class EngineeringAssumptions(BaseModel):
     plinth_height_m: float = 0.6
     excavation_working_space_m: float = 0.15
     parapet_height_m: float = 0.9
+
+    @classmethod
+    def for_unit_system(cls, unit_system: str) -> "EngineeringAssumptions":
+        """Defaults for a unit system: SI keeps the metric values above;
+        FPS uses round feet-inch values (3" PCC, 2'-0" plinth, 6" working
+        space, 3'-0" parapet) - mirrors engineering/rules.py
+        ASSUMPTION_DIMENSION_DEFAULTS."""
+        if unit_system == UnitSystem.FPS.value:
+            inch = 0.0254
+            return cls(
+                pcc_thickness_m=3 * inch,
+                plinth_height_m=24 * inch,
+                excavation_working_space_m=6 * inch,
+                parapet_height_m=36 * inch,
+            )
+        return cls()
 
 
 class WastageFactors(BaseModel):

@@ -4,6 +4,7 @@ Reusable Streamlit widgets shared across app.py steps.
 from __future__ import annotations
 
 import math
+import re
 from typing import Dict, Optional
 
 import pandas as pd
@@ -58,7 +59,7 @@ def render_estimate_input(
     """
     if quantity_kind is not None:
         display_value = units.to_display(estimate.value, quantity_kind, unit_system)
-        display_step = units.to_display(step, quantity_kind, unit_system) or step
+        display_step = units.display_step(step, quantity_kind, unit_system)
         display_min = units.to_display(min_value, quantity_kind, unit_system)
         display_unit = units.dimension_unit_label(quantity_kind, unit_system)
     else:
@@ -123,6 +124,24 @@ def render_wastage_editor(wastage: WastageFactors) -> WastageFactors:
     )
 
 
+_SI_GRADE_RE = re.compile(r"\bM(?:7\.5|10|15|20|25)\b")
+
+
+def _grade_labels_for_system(text: str, unit_system: str) -> str:
+    """'PCC (M10) bedding' -> 'PCC (1500 psi) bedding' in FPS; SI unchanged."""
+    if not units.is_fps(unit_system):
+        return text
+
+    def sub(m: "re.Match[str]") -> str:
+        label = m.group(0)
+        for options in (rules.CONCRETE_GRADE_OPTIONS, rules.PCC_GRADE_OPTIONS):
+            if label in options["SI"]:
+                return rules.grade_label_for_system(label, options, unit_system)
+        return label
+
+    return _SI_GRADE_RE.sub(sub, text)
+
+
 def render_rate_editor(
     rate_book: Dict[str, MaterialRate],
     unit_system: str = units.SI,
@@ -137,9 +156,8 @@ def render_rate_editor(
     """
     if units.is_fps(unit_system):
         st.caption(
-            "Edit unit rates below (shown per cft / sqft - Pakistani FPS practice) to match your local market "
-            "before generating the final BOQ cost. Rates are still stored/calculated per metric unit internally, "
-            "so switching unit systems never changes the total cost."
+            "Edit unit rates below (per cft / sqft / kg / Nos - Pakistani FPS practice) to match your local "
+            "market; the BOQ below updates automatically."
         )
     else:
         st.caption("Edit unit rates below to match your local market before generating the final BOQ cost.")
@@ -149,7 +167,7 @@ def render_rate_editor(
         [
             {
                 "Item Code": r.item_code,
-                "Description": r.description,
+                "Description": _grade_labels_for_system(r.description, unit_system),
                 "Unit": units.display_unit(r.unit, unit_system),
                 "Category": r.category,
                 rate_col_label: round(units.display_rate(r.rate, r.unit, unit_system), 4),
@@ -175,7 +193,12 @@ def render_rate_editor(
     for _, row in edited.iterrows():
         code = row["Item Code"]
         original = rate_book[code]
-        si_rate = units.rate_to_si(float(row[rate_col_label]), original.unit, unit_system)
+        shown = float(row[rate_col_label])
+        si_rate = units.rate_to_si(shown, original.unit, unit_system)
+        if units.is_fps(unit_system) and math.isclose(
+            shown, round(units.display_rate(original.rate, original.unit, unit_system), 4), rel_tol=0, abs_tol=1e-9
+        ):
+            si_rate = original.rate  # unedited: keep the exact stored rate (no per-rerun rounding drift)
         updated[code] = MaterialRate(
             item_code=code,
             description=original.description,
@@ -189,45 +212,69 @@ def render_rate_editor(
 def render_assumptions_editor(assumptions: EngineeringAssumptions, unit_system: str = units.SI) -> EngineeringAssumptions:
     """Editable thumb rules and key default dimensions used by the
     deterministic calculations (engineering/calculations.py)."""
-    st.caption(
-        "Thumb-rule steel allowances (kg of steel per m³ of concrete) and key default dimensions. "
-        "Typical ranges are shown in each field's help. Values are stored in SI."
-    )
+    fps = units.is_fps(unit_system)
+    if fps:
+        st.caption(
+            "Thumb-rule steel allowances (kg of steel per cft of concrete) and key default dimensions. "
+            "Typical ranges are shown in each field's help."
+        )
+    else:
+        st.caption(
+            "Thumb-rule steel allowances (kg of steel per m³ of concrete) and key default dimensions. "
+            "Typical ranges are shown in each field's help. Values are stored in SI."
+        )
 
     def rng(member: str) -> str:
         lo, mid, hi = rules.STEEL_THUMB_RULE_KG_PER_M3[member]
+        if fps:
+            kv = lambda x: units.kg_per_volume(x, unit_system)  # noqa: E731
+            return f"Typical {kv(lo):.2f}-{kv(hi):.2f} kg/cft (default {kv(mid):.2f})."
         return f"Typical {lo:g}-{hi:g} kg/m³ (default {mid:g})."
+
+    def steel(label: str, value_kg_per_m3: float, member: str, key: str) -> float:
+        if not fps:
+            return st.number_input(f"{label} (kg/m³)", 0.0, 400.0, float(value_kg_per_m3), 5.0, help=rng(member), key=key)
+        shown = units.kg_per_volume(value_kg_per_m3, unit_system)
+        new = st.number_input(
+            f"{label} (kg/cft)", 0.0, 12.0, float(round(shown, 4)), 0.05, format="%.2f", help=rng(member), key=key
+        )
+        new_si = new * units.CFT_PER_CUM
+        # Unchanged field -> keep the exact stored value (no rounding drift).
+        return value_kg_per_m3 if abs(new - round(shown, 4)) < 1e-9 else new_si
 
     c1, c2, c3 = st.columns(3)
     with c1:
-        ftg = st.number_input("Footing steel (kg/m³)", 0.0, 400.0, float(assumptions.steel_kg_per_m3_footing), 5.0, help=rng("footing"), key="asm_ftg")
-        col = st.number_input("Column steel (kg/m³)", 0.0, 400.0, float(assumptions.steel_kg_per_m3_column), 5.0, help=rng("column"), key="asm_col")
+        ftg = steel("Footing steel", assumptions.steel_kg_per_m3_footing, "footing", "asm_ftg")
+        col = steel("Column steel", assumptions.steel_kg_per_m3_column, "column", "asm_col")
     with c2:
-        beam = st.number_input("Beam steel (kg/m³)", 0.0, 400.0, float(assumptions.steel_kg_per_m3_beam), 5.0, help=rng("beam"), key="asm_beam")
-        slab = st.number_input("Slab steel (kg/m³)", 0.0, 400.0, float(assumptions.steel_kg_per_m3_slab), 5.0, help=rng("slab"), key="asm_slab")
+        beam = steel("Beam steel", assumptions.steel_kg_per_m3_beam, "beam", "asm_beam")
+        slab = steel("Slab steel", assumptions.steel_kg_per_m3_slab, "slab", "asm_slab")
     with c3:
-        stair = st.number_input("Stair steel (kg/m³)", 0.0, 400.0, float(assumptions.steel_kg_per_m3_stair), 5.0, help=rng("stair"), key="asm_stair")
-        lintel = st.number_input("Lintel steel (kg/m³)", 0.0, 400.0, float(assumptions.steel_kg_per_m3_lintel), 5.0, help=rng("lintel"), key="asm_lintel")
+        stair = steel("Stair steel", assumptions.steel_kg_per_m3_stair, "stair", "asm_stair")
+        lintel = steel("Lintel steel", assumptions.steel_kg_per_m3_lintel, "lintel", "asm_lintel")
 
     def dim(label: str, value_si: float, key: str, kind: str, step_si: float, help_text: str) -> float:
         shown = units.to_display(value_si, kind, unit_system)
         unit = units.dimension_unit_label(kind, unit_system)
         new = st.number_input(
             f"{label} ({unit})", min_value=0.0, value=float(shown),
-            step=float(units.to_display(step_si, kind, unit_system)), key=key, help=help_text,
+            step=float(units.display_step(step_si, kind, unit_system)), key=key, help=help_text,
         )
         new_si = units.to_si(new, kind, unit_system)
         return value_si if math.isclose(new_si, value_si, rel_tol=1e-9, abs_tol=1e-9) else new_si
 
     d1, d2, d3, d4 = st.columns(4)
+    dflt = EngineeringAssumptions.for_unit_system(unit_system)
+    sm = lambda v: units.small_text(v, unit_system, f"{v*1000:.0f} mm")  # noqa: E731
+    ln = lambda v: units.length_text(v, unit_system, f"{v:g} m")  # noqa: E731
     with d1:
-        pcc_t = dim("PCC thickness", assumptions.pcc_thickness_m, "asm_pcc", "thickness", 0.005, "Lean concrete bed under footings (default 75 mm).")
+        pcc_t = dim("PCC thickness", assumptions.pcc_thickness_m, "asm_pcc", "thickness", 0.005, f"Lean concrete bed under footings (default {sm(dflt.pcc_thickness_m)}).")
     with d2:
-        plinth_h = dim("Plinth height", assumptions.plinth_height_m, "asm_plinth", "length", 0.05, "Natural ground level to ground-floor level (default 0.6 m).")
+        plinth_h = dim("Plinth height", assumptions.plinth_height_m, "asm_plinth", "length", 0.05, f"Natural ground level to ground-floor level (default {ln(dflt.plinth_height_m)}).")
     with d3:
-        ws = dim("Excavation working space", assumptions.excavation_working_space_m, "asm_ws", "thickness", 0.01, "Added on each side of a footing (default 150 mm).")
+        ws = dim("Excavation working space", assumptions.excavation_working_space_m, "asm_ws", "thickness", 0.01, f"Added on each side of a footing (default {sm(dflt.excavation_working_space_m)}).")
     with d4:
-        parapet_h = dim("Parapet height", assumptions.parapet_height_m, "asm_parapet", "length", 0.05, "Roof parapet wall height (default 0.9 m).")
+        parapet_h = dim("Parapet height", assumptions.parapet_height_m, "asm_parapet", "length", 0.05, f"Roof parapet wall height (default {ln(dflt.parapet_height_m)}).")
 
     return EngineeringAssumptions(
         steel_kg_per_m3_footing=ftg,

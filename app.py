@@ -28,7 +28,7 @@ from engineering.calculations import external_perimeter_estimate, founding_depth
 from engineering.validation import validate_params
 from export.excel_export import build_excel_workbook
 from export.pdf_export import build_pdf_report
-from models.schemas import ConfidenceLevel, ProjectInputs
+from models.schemas import ConfidenceLevel, EngineeringAssumptions, ProjectInputs
 from mto_boq.boq_generator import boq_to_dataframe, cost_by_category, generate_boq
 from mto_boq.mto_generator import (
     compute_procurement_totals,
@@ -146,12 +146,13 @@ def step_1():
         "Unit System",
         options=unit_system_options,
         format_func=lambda v: units.UNIT_SYSTEM_LABELS[v],
-        index=unit_system_options.index(pi.unit_system) if pi.unit_system in unit_system_options else 0,
+        index=unit_system_options.index(pi.unit_system) if pi.unit_system in unit_system_options else 1,
         help=(
-            "Choose whether dimensions are entered/displayed in SI (metric: m, m², m³) or FPS "
-            "(feet/inches, cft, sqft - standard Pakistani construction practice). All engineering "
-            "calculations are always performed internally in SI regardless of this choice, so "
-            "switching later never changes the underlying numbers - only how they're shown."
+            "FPS (default, standard Pakistani practice): every input, default dimension, calculation "
+            "trace, MTO/BOQ quantity, rate and export is in feet/inches, sqft and cft, with psi concrete "
+            "grades and Grade 40/60/75 steel. SI: everything in metres, m² and m³ with M-grades and "
+            "Fe-grade steel. Conversions are exact; each system uses its own round standard details "
+            "(e.g. 6\" lintels in FPS vs 150 mm in SI)."
         ),
         key="unit_system_selector",
     )
@@ -191,7 +192,7 @@ def step_1():
     with c2:
         grade_unit_key = units.FPS if unit_system == units.FPS else units.SI
         wall_material_options = list(rules.MASONRY_UNIT_SIZES_M.keys())
-        wall_thickness_options = [100, 115, 150, 200, 230]
+        wall_thickness_options = units.WALL_THICKNESS_OPTIONS_MM[grade_unit_key]
         concrete_grade = st.selectbox(
             "Concrete Grade (structural members)",
             rules.CONCRETE_GRADE_OPTIONS[grade_unit_key],
@@ -213,11 +214,14 @@ def step_1():
             index=wall_material_options.index(pi.wall_material) if pi.wall_material in wall_material_options else 0,
             format_func=lambda v: units.relabel_wall_material(v, unit_system),
         )
+        # A value saved under the other unit system (e.g. 230 mm) maps to
+        # the nearest option of this one (228.6 mm = 9").
+        current_wall_mm = units.nearest_option(pi.wall_thickness_mm, wall_thickness_options)
         wall_thickness_mm = st.selectbox(
             "Wall Thickness",
             wall_thickness_options,
-            index=wall_thickness_options.index(pi.wall_thickness_mm) if pi.wall_thickness_mm in wall_thickness_options else 4,
-            format_func=lambda mm: f'{mm / 25.4:.1f}" ({mm} mm)' if unit_system == units.FPS else f"{mm} mm",
+            index=wall_thickness_options.index(current_wall_mm) if current_wall_mm in wall_thickness_options else 3,
+            format_func=lambda mm: units.wall_thickness_label(mm, unit_system),
         )
 
     st.markdown("##### Finishes & scope toggles")
@@ -326,6 +330,21 @@ def step_1():
         # If the drawings (or their view tags) changed since the last
         # analysis, drop every cached image/OCR/AI result derived from the
         # old ones - otherwise Step 2 would analyse the stale drawings.
+        if unit_system != pi.unit_system:
+            # Switch the Step 3 engineering-assumption defaults to the new
+            # unit system's round values - unless the user edited them.
+            if st.session_state["assumptions"] == EngineeringAssumptions.for_unit_system(pi.unit_system):
+                st.session_state["assumptions"] = EngineeringAssumptions.for_unit_system(unit_system)
+            # Parameters still at the old system's defaults are dropped so
+            # the new system's defaults are used (e.g. 1.2 m -> 4'-0" footings).
+            old_defaults = default_building_params(pi.wall_thickness_mm, pi.wall_material, pi.unit_system)
+            if st.session_state.get("extracted_params") is not None and st.session_state["extracted_params"] == old_defaults:
+                st.session_state["extracted_params"] = None
+            # MTO/BOQ text (descriptions, traces) is produced in the unit
+            # system it was calculated in - never show it under the other one.
+            for k in ("mto_items", "boq_items", "cost_summary"):
+                st.session_state[k] = None
+            st.session_state["export_cache"] = {}
         signature = _uploads_signature(uploaded_files_with_tags)
         if signature != st.session_state.get("uploaded_signature"):
             clear_drawing_derived_state()
@@ -395,6 +414,7 @@ def step_2():
             st.session_state["extracted_params"] = default_building_params(
                 wall_thickness_mm=st.session_state["project_inputs"].wall_thickness_mm,
                 wall_material=st.session_state["project_inputs"].wall_material,
+                unit_system=st.session_state["project_inputs"].unit_system,
             )
             st.session_state["used_ai"] = False
             go_to_step(3)
@@ -469,6 +489,7 @@ def step_2():
         st.session_state["extracted_params"] = default_building_params(
             wall_thickness_mm=st.session_state["project_inputs"].wall_thickness_mm,
             wall_material=st.session_state["project_inputs"].wall_material,
+            unit_system=st.session_state["project_inputs"].unit_system,
         )
         st.session_state["used_ai"] = False
         go_to_step(3)
@@ -492,6 +513,7 @@ def step_2():
                     image_labels=labels,
                     wall_thickness_mm=st.session_state["project_inputs"].wall_thickness_mm,
                     wall_material=st.session_state["project_inputs"].wall_material,
+                    unit_system=st.session_state["project_inputs"].unit_system,
                 )
             st.session_state["extracted_params"] = params
             st.session_state["raw_ai_response"] = raw_text
@@ -514,8 +536,9 @@ def step_3():
     unit_system = st.session_state["project_inputs"].unit_system
     if units.is_fps(unit_system):
         st.caption(
-            "Unit system: **FPS** - dimensions below are shown in feet/inches (Pakistani practice). "
-            "Values are converted to metric internally for calculation; switch back to SI in Step 1 at any time."
+            "Unit system: **FPS** (Pakistani practice) - enter lengths in feet, member sizes and thicknesses in "
+            "inches, and areas in sqft. Every quantity, calculation trace and export is produced in FPS; "
+            "switch to SI in Step 1 at any time."
         )
 
     if st.session_state.get("ai_errors"):
@@ -552,7 +575,7 @@ def step_3():
             help="Quantities are calculated as isolated pad footings in this MVP.",
         )
         if params.footings.founding_depth_m is None:
-            params.footings.founding_depth_m = founding_depth_estimate(params.footings)
+            params.footings.founding_depth_m = founding_depth_estimate(params.footings, unit_system)
         c1, c2, c3, c4, c5 = st.columns(5)
         with c1:
             params.footings.count = render_estimate_input("Count", params.footings.count, "ftg_count", "nos", step=1.0)
@@ -562,13 +585,21 @@ def step_3():
             params.footings.width_m = render_estimate_input("Width", params.footings.width_m, "ftg_wid", step=0.05, unit_system=unit_system, quantity_kind="length")
         with c4:
             params.footings.depth_m = render_estimate_input(
-                "Footing thickness", params.footings.depth_m, "ftg_dep", step=0.05, unit_system=unit_system, quantity_kind="length",
-                help_text="Depth of the concrete pad itself (typically 0.3-0.6 m). Drives footing concrete volume.",
+                "Footing thickness", params.footings.depth_m, "ftg_dep", step=0.05, unit_system=unit_system, quantity_kind="thickness",
+                help_text=(
+                    'Depth of the concrete pad itself (typically 12"-24"). Drives footing concrete volume.'
+                    if units.is_fps(unit_system)
+                    else "Depth of the concrete pad itself (typically 0.3-0.6 m). Drives footing concrete volume."
+                ),
             )
         with c5:
             params.footings.founding_depth_m = render_estimate_input(
                 "Founding depth", params.footings.founding_depth_m, "ftg_found", step=0.05, unit_system=unit_system, quantity_kind="length",
-                help_text="Natural ground level down to the UNDERSIDE of the footing (typically 1.2-2.0 m). Drives excavation depth.",
+                help_text=(
+                    "Natural ground level down to the UNDERSIDE of the footing (typically 4'-0\" to 6'-6\"). Drives excavation depth."
+                    if units.is_fps(unit_system)
+                    else "Natural ground level down to the UNDERSIDE of the footing (typically 1.2-2.0 m). Drives excavation depth."
+                ),
             )
 
     with st.expander("Columns", expanded=True):
@@ -678,7 +709,7 @@ def step_4():
     mto_items = st.session_state["mto_items"]
     unit_system = st.session_state["project_inputs"].unit_system
 
-    summary = compute_reinforcement_summary(mto_items)
+    summary = compute_reinforcement_summary(mto_items, unit_system)
     badge_color = "green" if summary["status"] == "OK" else "orange"
     st.markdown(f":{badge_color}[**Steel sanity check:** {summary['message']}]")
 
@@ -697,7 +728,10 @@ def step_4():
     pc3.metric("Aggregate/Crush", f"{agg_qty:,.1f} {agg_unit}")
 
     if units.is_fps(unit_system):
-        st.caption("Quantities below are shown in FPS (cft/sqft). All engineering calculations are performed internally in SI/metric units.")
+        st.caption(
+            "Unit system: FPS - quantities, formulas, calculation inputs and assumptions below are all in "
+            "feet/inches, sqft and cft (steel in kg, cement in bags)."
+        )
 
     show_procurement_rows = st.checkbox(
         "Show cement/sand/aggregate & mortar breakdown rows in the table below",
@@ -718,7 +752,7 @@ def step_4():
                 st.write(f"Quantity: **{display_qty:,.3f} {display_unit}**")
                 if item.informational:
                     st.caption(f"\U0001f4e6 Procurement reference only - already priced under **{item.parent_item_code}** above; do not add its cost again.")
-                st.caption(f"Formula (metric): {item.formula}")
+                st.caption(f"Formula: {item.formula}" if units.is_fps(unit_system) else f"Formula (metric): {item.formula}")
                 if item.inputs_used:
                     st.caption("Inputs used: " + ", ".join(f"{k}={v}" for k, v in item.inputs_used.items()))
                 for a in item.assumptions:
@@ -819,7 +853,7 @@ def step_5():
         cost_summary = st.session_state["cost_summary"]
 
         if units.is_fps(pi.unit_system):
-            st.caption("Quantities/Rates below are shown in FPS (cft/sqft). Amounts and totals are unaffected by unit system.")
+            st.caption("Unit system: FPS - quantities in cft/sqft/Nos/kg and rates per cft/sqft/Nos/kg. Amounts and totals are identical to the SI view.")
 
         df = boq_to_dataframe(boq_items, unit_system=pi.unit_system)
         st.dataframe(df, width="stretch", hide_index=True)

@@ -59,13 +59,13 @@ def mto_to_dataframe(items: List[QuantityLineItem], unit_system: str = units.SI)
     return pd.DataFrame(rows)
 
 
-def compute_reinforcement_summary(items: List[QuantityLineItem]) -> dict:
+def compute_reinforcement_summary(items: List[QuantityLineItem], unit_system: str = units.SI) -> dict:
     structural_categories = {"Footing", "Column", "Beam", "Slab", "Staircase", "Lintels"}
     structural_concrete = sum(
         i.quantity for i in items if i.category in structural_categories and i.unit == "m3" and not i.informational
     )
     total_steel = sum(i.quantity for i in items if i.category == "Reinforcement" and not i.informational)
-    return steel_sanity_check(structural_concrete, total_steel)
+    return steel_sanity_check(structural_concrete, total_steel, unit_system)
 
 
 def compute_procurement_totals(items: List[QuantityLineItem]) -> dict:

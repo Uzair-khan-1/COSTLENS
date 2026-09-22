@@ -24,7 +24,7 @@ def init_session_state():
         "pdf_text_hint": "",
         "uploaded_signature": None,  # fingerprint of the uploaded files+tags the cached images belong to
         "user_groq_api_key": "",  # optional key typed into the sidebar (session memory only)
-        "assumptions": EngineeringAssumptions(),
+        "assumptions": EngineeringAssumptions.for_unit_system(ProjectInputs().unit_system),
         "preliminaries_pct": PRELIMINARIES_PCT_OF_CIVIL_SUBTOTAL,
         "export_cache": {},  # signature -> (excel_bytes, pdf_bytes)
         "project_inputs": ProjectInputs(),
@@ -72,7 +72,7 @@ def reset_project():
     st.session_state["project_inputs"] = ProjectInputs()
     st.session_state["wastage_factors"] = WastageFactors()
     st.session_state["rate_book"] = {r.item_code: r for r in load_default_rates()}
-    st.session_state["assumptions"] = EngineeringAssumptions()
+    st.session_state["assumptions"] = EngineeringAssumptions.for_unit_system(ProjectInputs().unit_system)
     st.session_state["preliminaries_pct"] = PRELIMINARIES_PCT_OF_CIVIL_SUBTOTAL
     st.session_state["step"] = 1
 

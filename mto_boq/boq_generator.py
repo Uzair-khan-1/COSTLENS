@@ -90,6 +90,14 @@ def _wastage_for(item: QuantityLineItem, wastage: WastageFactors) -> float:
     return getattr(wastage, field, wastage.misc_pct)
 
 
+def _round_qty(value: float, unit: str, unit_system: str) -> float:
+    """SI: 3 decimals of the canonical unit (unchanged). FPS: m3/m2 keep full
+    precision so they are rounded in cft/sqft when displayed/exported."""
+    if units.is_fps(unit_system) and unit in ("m3", "m2"):
+        return round(value, 9)
+    return round(value, 3)
+
+
 def _finish_level_multiplier(category: str, finish_level: str) -> float:
     """Only the finish-grade-sensitive categories listed in
     engineering.rules.FINISH_LEVEL_RATE_MULTIPLIERS (Flooring, Painting,
@@ -164,9 +172,16 @@ def generate_boq(
             delta = concrete_grade_rate_delta(grade_label, grade_spec[1])
             if abs(delta) >= 0.5:
                 rate = max(rate + delta, 0.0)
+                us = project_inputs.unit_system
+                base_label = rules.grade_label_for_system(
+                    grade_spec[1],
+                    rules.PCC_GRADE_OPTIONS if grade_spec[0] == "pcc_grade" else rules.CONCRETE_GRADE_OPTIONS,
+                    us,
+                )
+                shown_delta = units.display_rate(abs(delta), "m3", us)
                 note = (
-                    f"Rate {'+' if delta > 0 else '-'}{abs(delta):,.0f}/m3 for grade {grade_label} "
-                    f"(rate book priced at {grade_spec[1]})."
+                    f"Rate {'+' if delta > 0 else '-'}{shown_delta:,.0f}/{units.display_unit('m3', us)} for grade {grade_label} "
+                    f"(rate book priced at {base_label})."
                 )
                 remarks = f"{remarks} {note}".strip()
 
@@ -183,9 +198,9 @@ def generate_boq(
                 description=item.description,
                 category=item.category,
                 unit=item.unit,
-                quantity=round(item.quantity, 3),
+                quantity=_round_qty(item.quantity, item.unit, project_inputs.unit_system),
                 wastage_pct=wastage_pct,
-                quantity_with_wastage=round(qty_with_wastage, 3),
+                quantity_with_wastage=_round_qty(qty_with_wastage, item.unit, project_inputs.unit_system),
                 rate=rate,
                 amount=round(amount, 2),
                 confidence=item.confidence,

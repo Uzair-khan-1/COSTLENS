@@ -55,7 +55,7 @@ def _project_info_table(project_inputs: ProjectInputs) -> Table:
         ["Project", project_inputs.project_name, "Location", project_inputs.location],
         ["Client", project_inputs.client_name or "-", "Soil Type", project_inputs.soil_type],
         ["Concrete (Ftg/Col/Beam/Slab)", f"{project_inputs.concrete_grade_footing}/{project_inputs.concrete_grade_column}/{project_inputs.concrete_grade_beam}/{project_inputs.concrete_grade_slab}", "Steel Grade", project_inputs.steel_grade],
-        ["Wall Material", project_inputs.wall_material, "Finish Level", project_inputs.finish_level],
+        ["Wall Material", units.relabel_wall_material(project_inputs.wall_material, project_inputs.unit_system), "Finish Level", project_inputs.finish_level],
         ["Unit System", unit_system_label, "Currency", project_inputs.currency],
     ]
     t = Table(data, colWidths=[45 * mm, 65 * mm, 30 * mm, 40 * mm])
@@ -219,6 +219,9 @@ def build_pdf_report(
     unit_note = (
         f"Quantities shown in {units.UNIT_SYSTEM_LABELS.get(unit_system, unit_system)}. "
         "All calculations are performed internally in SI/metric units."
+    ) if not units.is_fps(unit_system) else (
+        f"Quantities shown in {units.UNIT_SYSTEM_LABELS.get(unit_system, unit_system)}. "
+        "All quantities, rates and dimensions are in FPS (ft, in, sqft, cft; steel in kg, cement in bags)."
     )
 
     story.append(PageBreak())
