@@ -92,8 +92,9 @@ SUPPORTED_FILE_TYPES = ["pdf", "png", "jpg", "jpeg"]
 # multi-FILE upload (e.g. separate Plan + Elevation + Section PDFs) from
 # growing the per-request image count (and therefore token usage) without
 # bound, so a free/low-tier Groq API key doesn't get rate-limited.
-MAX_DRAWING_FILES = 3          # e.g. one each for Plan, Elevation, Section
-MAX_PAGES_PER_FILE = 2         # pages read from any single multi-page PDF
+MAX_DRAWING_FILES = 10         # a full drawing set: plans, sections, elevations, structural...
+MAX_PAGES_PER_FILE = 20        # pages analysed (free, no AI) from any one PDF; only the best
+                               # MAX_TOTAL_IMAGES pages are ever sent to the AI
 MAX_TOTAL_IMAGES = MAX_IMAGES_PER_REQUEST  # hard cap across ALL files combined (Groq per-request image limit)
 
 # Max characters of PDF text-layer (vector PDF dimension strings, notes)

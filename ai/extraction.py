@@ -160,12 +160,13 @@ def _map_json_to_params(
     wall_thickness_mm: float = 230.0,
     wall_material: str = rules.DEFAULT_WALL_MATERIAL,
     unit_system: str = "SI",
+    defaults: Optional[ExtractedBuildingParams] = None,
 ) -> ExtractedBuildingParams:
     if not isinstance(raw, dict):
         raise ValueError("AI response is not a JSON object")
-    # Fields the AI leaves out fall back to the project's unit-system
-    # defaults (e.g. 4'-0" footings in FPS rather than 1.2 m).
-    d = default_building_params(wall_thickness_mm, wall_material, unit_system)
+    # Fields the AI leaves out fall back to `defaults` (e.g. the 5-10 marla
+    # plot template) or the project's unit-system defaults.
+    d = defaults or default_building_params(wall_thickness_mm, wall_material, unit_system)
     r = _FieldReader(raw)
     top = raw
     f, c, b, s, w, o = (r.section(k) for k in ("footings", "columns", "beams", "slabs", "walls", "openings"))
@@ -226,7 +227,14 @@ def _map_json_to_params(
         overall_notes=str(raw.get("overall_notes", ""))[:1000],
         extraction_warnings=[str(x)[:300] for x in (raw.get("extraction_warnings") or []) if x] if isinstance(raw.get("extraction_warnings", []), list) else [],
     )
-    params.extraction_warnings.extend(r.warnings)
+    # One grouped message per kind instead of a line per field.
+    missing = [w[len("AI did not return "):-len("; default used.")] for w in r.warnings if w.startswith("AI did not return ")]
+    unreadable = [w[len("AI value for "):-len(" was unreadable; default used.")] for w in r.warnings if w.startswith("AI value for ")]
+    source = "the plot template" if defaults is not None else "standard defaults"
+    if missing:
+        params.extraction_warnings.append(f"AI did not return: {', '.join(missing)} - {source} used.")
+    if unreadable:
+        params.extraction_warnings.append(f"AI values were unreadable for: {', '.join(unreadable)} - {source} used.")
     return params
 
 
@@ -385,6 +393,7 @@ def extract_building_params(
     wall_thickness_mm: float = 230.0,
     wall_material: str = rules.DEFAULT_WALL_MATERIAL,
     unit_system: str = "SI",
+    fallback_params: Optional[ExtractedBuildingParams] = None,
 ) -> Tuple[ExtractedBuildingParams, str, List[str]]:
     """Returns (params, raw_model_output_text, error_messages).
 
@@ -409,11 +418,11 @@ def extract_building_params(
         )
     except GroqClientError as exc:
         logger.warning("Groq call failed, using defaults: %s", exc)
-        return default_building_params(wall_thickness_mm, wall_material, unit_system), "", [str(exc)]
+        return fallback_params or default_building_params(wall_thickness_mm, wall_material, unit_system), "", [str(exc)]
 
     try:
         raw_json = json.loads(_strip_code_fences(raw_text or ""))
-        params = _map_json_to_params(raw_json, wall_thickness_mm, wall_material, unit_system)
+        params = _map_json_to_params(raw_json, wall_thickness_mm, wall_material, unit_system, fallback_params)
         return params, raw_text, errors
     except (json.JSONDecodeError, KeyError, ValueError, TypeError, AttributeError, ValidationError) as exc:
         logger.warning("Failed to parse/validate Groq JSON output, using defaults: %s", exc)
@@ -422,4 +431,4 @@ def extract_building_params(
             f"({type(exc).__name__}: {exc}). Falling back to standard defaults - "
             "please review and edit every field below."
         )
-        return default_building_params(wall_thickness_mm, wall_material, unit_system), raw_text, errors
+        return fallback_params or default_building_params(wall_thickness_mm, wall_material, unit_system), raw_text, errors

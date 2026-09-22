@@ -45,6 +45,11 @@ def _autofit(ws, widths: List[int]):
         ws.column_dimensions[get_column_letter(i)].width = w
 
 
+def _plot_label(pi: ProjectInputs) -> str:
+    storeys = {1: "single storey", 2: "G+1", 3: "G+2"}.get(pi.plot_storeys, f"{pi.plot_storeys} storeys")
+    return f"{pi.plot_marla:g} marla ({pi.marla_sqft:g} sqft/marla), {storeys}"
+
+
 def _write_cover_sheet(wb: Workbook, project_inputs: ProjectInputs, cost_summary: CostSummary, totals: dict):
     """`totals` holds the BOQ sheet cell addresses of the subtotal,
     contingency and grand total, so the cover figures are LIVE formulas
@@ -63,6 +68,7 @@ def _write_cover_sheet(wb: Workbook, project_inputs: ProjectInputs, cost_summary
         ("Project Name", project_inputs.project_name),
         ("Client", project_inputs.client_name),
         ("Location", project_inputs.location),
+        *([("Plot", _plot_label(project_inputs))] if project_inputs.plot_marla else []),
         ("Soil Type", project_inputs.soil_type),
         ("Concrete Grade (Footing/Column/Beam/Slab)", f"{project_inputs.concrete_grade_footing} / {project_inputs.concrete_grade_column} / {project_inputs.concrete_grade_beam} / {project_inputs.concrete_grade_slab}"),
         ("Steel Grade", project_inputs.steel_grade),

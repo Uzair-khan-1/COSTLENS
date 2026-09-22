@@ -174,10 +174,12 @@ mto_boq_estimator/
 │   └── extraction.py           # Orchestrates AI extraction -> Pydantic
 ├── drawing_processing/
 │   ├── pdf_processor.py        # PyMuPDF: PDF -> images, text layer
+│   ├── package_analyzer.py     # Drawing-set analysis without AI (sheets, text, vector walls)
 │   ├── image_processor.py      # OpenCV: cleanup, deskew, resize
 │   └── ocr_engine.py           # EasyOCR wrapper, dimension-text helpers
 ├── engineering/
 │   ├── rules.py                # Thumb-rule constants & default assumptions
+│   ├── plot_templates.py       # 5-10 marla plot templates & plausibility ranges
 │   ├── calculations.py         # ALL deterministic quantity formulas
 │   └── validation.py           # Input sanity checks run before calculation
 ├── mto_boq/
@@ -201,6 +203,59 @@ mto_boq_estimator/
 ```
 
 ---
+
+## 3b-0. Plot templates & full drawing sets (5-10 marla)
+
+The app is built for **5-10 marla residential houses in Pakistan** and uses
+that scope as knowledge:
+
+**Plot templates (Step 1).** Pick the plot size (5/7/8/10 marla), the marla
+standard (**225 sqft** society/LDA-style or **272.25 sqft** traditional - a
+~21% difference), storeys (single, G+1, G+2) and frontage. The app builds a
+complete typical house for that plot (covered footprint after typical
+front/rear open space, column grid with spans <= 14 ft, beams, walls,
+doors/windows, bathrooms), so an estimate exists even with no drawing. Every
+value is Low confidence and labelled for review (`engineering/plot_templates.py`).
+
+**Plausibility checks.** With a plot chosen, Step 3 flags values that don't
+fit the plot (covered area larger than the plot, too few/many columns,
+too many storeys or bathrooms).
+
+**Full drawing sets, read without AI (Step 2).** Upload the whole set (up
+to 10 files, multi-page PDFs). For CAD-exported PDFs,
+`drawing_processing/package_analyzer.py` reads, at zero AI cost:
+- **sheet sorting** from titles: floor plans per floor, sections,
+  elevations, foundation/structural, site, MEP, schedules (several views
+  per page are handled);
+- **plans:** room labels with sizes (bathrooms/kitchens counted), and, from
+  the vector geometry at the drawing scale, wall lengths (double wall lines,
+  openings bridged), footprint and perimeter, 9"/4.5" wall mix, door swings.
+  If the scale note is missing, the scale is inferred from the plot width
+  (Low confidence);
+- **sections:** floor-to-floor height, plinth, parapet, founding depth
+  (level marks) and slab thickness;
+- **structural sheets:** footing schedule and count, column size and count;
+- **title block:** plot size, marla, covered area per floor.
+
+The sheets are cross-checked against each other (floor plans vs section
+levels, footings vs columns, stated vs measured area, footprint vs plot
+width, drawing marla vs Step 1). Values read from drawings override AI and
+template values and carry a "From drawings" note with the page they came
+from. Only the most useful pages (ground plan, section, other plans,
+elevation, then scans) are sent to the AI, which fills what is still
+missing; with no API key, "Continue without AI" still uses everything read
+from the drawings.
+
+Scanned drawings and phone photos have no text layer or vectors: they go to
+the AI, with the plot template as fallback. Try it with
+`sample_data/sample_5_marla_package.pdf` (a CAD-style 5 marla G+1 set;
+regenerate with `python sample_data/make_sample_package.py`).
+
+Limits: CAD styles vary (walls as hatched polygons, blocks, non-rectangular
+footprints, scale notes that don't match the plotted size), so measured
+values are Medium confidence and always shown for review. Floors with
+different covered areas are averaged per floor, which keeps total
+quantities correct; a per-floor calculation engine is the next step.
 
 ## 3a. Units & currency
 
@@ -475,6 +530,15 @@ in-app and are fully editable before the BOQ is generated.
 - BOQ auto-recalculates; exports cached; Excel BOQ uses live formulas.
 - Pinned dependencies; deprecated Streamlit `use_container_width` removed.
 - Range/benchmark regression tests (`tests/test_accuracy_and_regressions.py`).
+
+**v0.4.0 - 5-10 marla plots & drawing sets**
+- Plot templates (5/7/8/10 marla, 225 or 272.25 sqft per marla, 1-3
+  storeys) with plausibility checks.
+- Free drawing-set analysis: sheet sorting, room/level/schedule/plot text
+  parsing and vector wall measurement for CAD PDFs, with cross-sheet
+  conflict checks and per-value provenance; only the best pages go to the AI.
+- Grouped AI warnings; AI-missing fields fall back to the plot template.
+- Tests: `tests/test_package_analysis.py` against a ground-truth sample set.
 
 **v0.4.0 - FPS update**
 - FPS (feet-inch, Pakistani practice) is now the default unit system, with

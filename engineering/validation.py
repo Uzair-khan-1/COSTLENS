@@ -166,6 +166,11 @@ def validate_params(
         if params.services.kitchen_count_total.value < 1:
             warnings.append("No kitchen entered while MEP & sanitary is included.")
 
+    if project_inputs is not None and project_inputs.plot_marla:
+        from engineering.plot_templates import plausibility_warnings
+
+        warnings.extend(plausibility_warnings(params, project_inputs))
+
     det = rules.detailing(us)
     if A.plinth_height_m < det["gf_soling_thickness_m"] + det["gf_pcc_floor_thickness_m"]:
         warnings.append("Plinth height is less than the ground-floor soling + PCC base thickness - plinth filling will be zero.")

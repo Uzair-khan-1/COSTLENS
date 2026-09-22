@@ -22,6 +22,8 @@ def init_session_state():
         "uploaded_image_labels": [],
         "ocr_hint_text": "",
         "pdf_text_hint": "",
+        "package_facts": None,  # drawing_processing.package_analyzer.PackageFacts for the uploaded set
+        "drawing_filled": [],  # parameter names filled from the drawings (no AI)
         "uploaded_signature": None,  # fingerprint of the uploaded files+tags the cached images belong to
         "user_groq_api_key": "",  # optional key typed into the sidebar (session memory only)
         "assumptions": EngineeringAssumptions.for_unit_system(ProjectInputs().unit_system),
@@ -55,6 +57,8 @@ def reset_project():
         "uploaded_image_labels",
         "ocr_hint_text",
         "pdf_text_hint",
+        "package_facts",
+        "drawing_filled",
         "uploaded_signature",
         "export_cache",
         "extracted_params",
@@ -87,6 +91,8 @@ def clear_drawing_derived_state():
         "uploaded_image_labels",
         "ocr_hint_text",
         "pdf_text_hint",
+        "package_facts",
+        "drawing_filled",
         "extracted_params",
         "raw_ai_response",
         "ai_errors",

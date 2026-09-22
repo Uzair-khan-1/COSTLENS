@@ -58,6 +58,10 @@ def _project_info_table(project_inputs: ProjectInputs) -> Table:
         ["Wall Material", units.relabel_wall_material(project_inputs.wall_material, project_inputs.unit_system), "Finish Level", project_inputs.finish_level],
         ["Unit System", unit_system_label, "Currency", project_inputs.currency],
     ]
+    if project_inputs.plot_marla:
+        from export.excel_export import _plot_label
+
+        data.append(["Plot", _plot_label(project_inputs), "", ""])
     t = Table(data, colWidths=[45 * mm, 65 * mm, 30 * mm, 40 * mm])
     t.setStyle(
         TableStyle(

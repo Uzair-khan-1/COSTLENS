@@ -30,6 +30,7 @@ class Source(str, Enum):
     DEFAULT_ASSUMPTION = "Default assumption"
     USER_EDITED = "User-edited"
     USER_INPUT = "User-input"
+    DRAWING_READ = "Read from drawing"  # text layer / vector geometry of CAD PDFs, no AI
 
 
 class UnitSystem(str, Enum):
@@ -229,6 +230,11 @@ class ProjectInputs(BaseModel):
     contingency_pct: float = 5.0
     currency: str = "PKR"
     unit_system: str = UnitSystem.FPS.value  # "FPS" (default, Pakistani practice) or "SI" - see UnitSystem
+    # Plot (5-10 marla scope). plot_marla None = not specified (generic defaults).
+    plot_marla: Optional[float] = None
+    marla_sqft: float = 225.0  # 225 society/LDA standard, 272.25 traditional
+    plot_width_ft: Optional[float] = None  # frontage; None = typical for the plot size
+    plot_storeys: int = 2  # used by the plot template (1 = single storey, 2 = G+1, 3 = G+2)
 
     @model_validator(mode="before")
     @classmethod

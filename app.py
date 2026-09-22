@@ -13,6 +13,8 @@ See README.md for the full architecture rationale.
 from __future__ import annotations
 
 import hashlib
+
+import pandas as pd
 from io import BytesIO
 
 import streamlit as st
@@ -26,6 +28,8 @@ from drawing_processing.pdf_processor import process_pdf
 from engineering import rules
 from engineering.calculations import external_perimeter_estimate, founding_depth_estimate
 from engineering.validation import validate_params
+from engineering import plot_templates
+from drawing_processing.package_analyzer import analyze_package, apply_package_facts, pages_for_ai, render_pages
 from export.excel_export import build_excel_workbook
 from export.pdf_export import build_pdf_report
 from models.schemas import ConfidenceLevel, EngineeringAssumptions, ProjectInputs
@@ -157,6 +161,60 @@ def step_1():
         key="unit_system_selector",
     )
 
+    # ---- Plot (the app's 5-10 marla scope) --------------------------------
+    st.markdown("##### Plot (5-10 marla)")
+    plot_options = [None] + plot_templates.PLOT_SIZES_MARLA
+    pc1, pc2, pc3, pc4 = st.columns(4)
+    plot_marla = pc1.selectbox(
+        "Plot size",
+        plot_options,
+        index=plot_options.index(pi.plot_marla) if pi.plot_marla in plot_options else 0,
+        format_func=lambda m: "Not specified" if m is None else f"{m} marla",
+        help="Choosing a plot size gives a complete typical house as the starting point (even with no drawing) "
+        "and lets the app flag values that are implausible for that plot.",
+    )
+    marla_options = list(plot_templates.MARLA_STANDARDS)
+    marla_sqft = pc2.selectbox(
+        "Marla standard",
+        marla_options,
+        index=marla_options.index(pi.marla_sqft) if pi.marla_sqft in marla_options else 0,
+        format_func=lambda v: plot_templates.MARLA_STANDARDS[v],
+        disabled=plot_marla is None,
+        help="Housing societies (LDA/DHA/Bahria style) use 225 sqft per marla; traditional measurement uses 272.25 sqft - a ~21% difference.",
+    )
+    storey_labels = {1: "Single storey", 2: "G+1 (double storey)", 3: "G+2"}
+    plot_storeys = pc3.selectbox(
+        "Storeys",
+        plot_templates.STOREY_OPTIONS,
+        index=plot_templates.STOREY_OPTIONS.index(pi.plot_storeys) if pi.plot_storeys in plot_templates.STOREY_OPTIONS else 1,
+        format_func=lambda n: storey_labels[n],
+        disabled=plot_marla is None,
+    )
+    typical_w, _ = plot_templates.plot_dimensions_ft(plot_marla or 5, marla_sqft)
+    current_w = pi.plot_width_ft or typical_w
+    fps_units = units.is_fps(unit_system)
+    shown_w = current_w if fps_units else current_w * 0.3048
+    entered_w = pc4.number_input(
+        f"Plot width / frontage ({'ft' if fps_units else 'm'})",
+        min_value=1.0,
+        value=float(round(shown_w, 2)),
+        step=1.0 if fps_units else 0.5,
+        disabled=plot_marla is None,
+        key=f"plot_width_{plot_marla}_{marla_sqft}_{unit_system}",
+        help="Typical frontage for this plot size is pre-filled - change it to match your plot.",
+    )
+    entered_w_ft = entered_w if fps_units else entered_w / 0.3048
+    plot_width_ft = None if abs(entered_w_ft - typical_w) < 0.01 else entered_w_ft
+    if plot_marla:
+        W, D = plot_templates.plot_dimensions_ft(plot_marla, marla_sqft, plot_width_ft)
+        cw, cd = plot_templates.covered_footprint_ft(plot_marla, marla_sqft, plot_width_ft)
+        L = lambda ft: units.length_text(ft * 0.3048, unit_system, f"{ft * 0.3048:.2f} m")  # noqa: E731
+        Ar = lambda sq: units.area_text(sq * 0.09290304, unit_system, f"{sq * 0.09290304:,.1f} m²", 0)  # noqa: E731
+        st.caption(
+            f"Plot {L(W)} x {L(D)} = {Ar(W * D)}. Typical covered footprint {L(cw)} x {L(cd)} = {Ar(cw * cd)} per floor "
+            "(front/rear open space as typical - edit in Step 3 if different)."
+        )
+
     # No st.form() here on purpose: a form batches every widget inside it
     # and only reruns on submit, which is exactly what breaks per-file
     # drawing tags (see below) - and the user also wants the Continue
@@ -246,10 +304,11 @@ def step_1():
 
     st.markdown("##### Drawing Upload")
     st.caption(
-        f"Upload up to {config.MAX_DRAWING_FILES} files - e.g. separate Plan, Elevation, and Section drawings. "
-        "A Section view especially helps: it's the only view that shows floor height, footing depth, and slab "
-        f"thickness. Up to {config.MAX_TOTAL_IMAGES} total pages/images are sent to the AI per analysis, to stay "
-        "within free-tier limits."
+        f"Upload the whole drawing set - up to {config.MAX_DRAWING_FILES} files (floor plans, sections, elevations, "
+        "foundation/structural sheets), as multi-page PDFs or images. CAD-exported PDFs are read directly, free and "
+        "without AI: sheets are sorted automatically, and room sizes, levels, schedules and wall lengths are taken "
+        f"from the drawing itself. Only the {config.MAX_TOTAL_IMAGES} most useful pages are ever sent to the AI, for "
+        "whatever is still missing."
     )
     raw_uploads = st.file_uploader(
         "Upload drawing(s) (PDF, PNG, or JPG)",
@@ -326,6 +385,10 @@ def step_1():
             include_roof_treatment=include_roof_treatment,
             contingency_pct=contingency_pct,
             unit_system=unit_system,
+            plot_marla=plot_marla,
+            marla_sqft=marla_sqft,
+            plot_width_ft=plot_width_ft,
+            plot_storeys=plot_storeys,
         )
         # If the drawings (or their view tags) changed since the last
         # analysis, drop every cached image/OCR/AI result derived from the
@@ -335,16 +398,23 @@ def step_1():
             # unit system's round values - unless the user edited them.
             if st.session_state["assumptions"] == EngineeringAssumptions.for_unit_system(pi.unit_system):
                 st.session_state["assumptions"] = EngineeringAssumptions.for_unit_system(unit_system)
-            # Parameters still at the old system's defaults are dropped so
-            # the new system's defaults are used (e.g. 1.2 m -> 4'-0" footings).
-            old_defaults = default_building_params(pi.wall_thickness_mm, pi.wall_material, pi.unit_system)
-            if st.session_state.get("extracted_params") is not None and st.session_state["extracted_params"] == old_defaults:
-                st.session_state["extracted_params"] = None
             # MTO/BOQ text (descriptions, traces) is produced in the unit
             # system it was calculated in - never show it under the other one.
             for k in ("mto_items", "boq_items", "cost_summary"):
                 st.session_state[k] = None
             st.session_state["export_cache"] = {}
+        new_pi = st.session_state["project_inputs"]
+        plot_key = lambda x: (x.plot_marla, x.marla_sqft, x.plot_width_ft, x.plot_storeys)  # noqa: E731
+        if unit_system != pi.unit_system or plot_key(pi) != plot_key(new_pi):
+            # Parameters still at the old starting point (plot template or
+            # unit-system defaults) are dropped so the new one is used, e.g.
+            # 1.2 m -> 4'-0" footings, or a 5 -> 10 marla template.
+            if st.session_state.get("extracted_params") is not None and st.session_state["extracted_params"] == _base_params(pi):
+                st.session_state["extracted_params"] = None
+            # The drawing analysis text is unit-formatted and uses the plot
+            # width as a hint - redo it for the new settings.
+            st.session_state["package_facts"] = None
+            st.session_state["uploaded_images"] = []
         signature = _uploads_signature(uploaded_files_with_tags)
         if signature != st.session_state.get("uploaded_signature"):
             clear_drawing_derived_state()
@@ -357,90 +427,146 @@ def step_1():
 # ---------------------------------------------------------------------------
 # STEP 2 — AI analysis
 # ---------------------------------------------------------------------------
-def _load_images_from_upload() -> tuple[list[Image.Image], list[str], str]:
-    """Turns the tagged file list from Step 1 into a flat list of cleaned
-    images plus a parallel list of view labels (one per image - every page
-    of a multi-page PDF inherits that file's tag). Caps pages-per-file and
-    the total image count (config.MAX_PAGES_PER_FILE / MAX_TOTAL_IMAGES) so
-    a multi-file upload can't blow up the AI request size unbounded.
+def _load_images_from_upload(facts=None) -> tuple[list[Image.Image], list[str], str]:
+    """Images to show/send to the AI, their labels, and a text hint.
 
-    Also returns the PDFs' embedded text layer (dimension strings, notes,
-    schedules exported as real text by CAD) as a compact hint string for
-    the AI - a free, far more reliable signal than reading tiny raster text.
+    With a drawing package (PDFs), every page has already been sorted by
+    drawing_processing.package_analyzer, so only the most useful pages
+    (ground plan, section, other plans, elevation, then unrecognised/scanned
+    pages) are rendered - at most config.MAX_TOTAL_IMAGES, the AI's
+    per-request image limit. Plain image uploads fill any remaining slots.
     """
     uploaded_files = st.session_state.get("uploaded_files") or []
     images: list[Image.Image] = []
     labels: list[str] = []
     pdf_text_parts: list[str] = []
+    selected = pages_for_ai(facts, config.MAX_TOTAL_IMAGES) if facts is not None else []
 
-    for f in uploaded_files:
-        if len(images) >= config.MAX_TOTAL_IMAGES:
-            break
+    for fi, f in enumerate(uploaded_files):
         name, file_bytes, view_tag = f["name"], f["bytes"], f["view_tag"]
-
         if name.lower().endswith(".pdf"):
-            max_pages = min(config.MAX_PAGES_PER_FILE, config.MAX_TOTAL_IMAGES - len(images))
-            result = process_pdf(file_bytes, dpi=200, max_pages=max_pages)
-            file_images = [p.image for p in result.pages]
+            wanted = [pg for (i, pg) in selected if i == fi]
+            if facts is None:
+                wanted = list(range(config.MAX_PAGES_PER_FILE))
+            if not wanted:
+                continue
+            for pg, img in zip(wanted, render_pages(file_bytes, wanted[: config.MAX_TOTAL_IMAGES])):
+                if len(images) >= config.MAX_TOTAL_IMAGES:
+                    break
+                kind = (facts.page_kinds.get((fi, pg), "") if facts is not None else "").split(":")
+                label = f"{kind[1].title() + ' floor ' if len(kind) > 1 and kind[1] else ''}{kind[0] if kind[0] and kind[0] != 'unknown' else view_tag} ({name} p{pg + 1})"
+                images.append(clean_drawing_image(img))
+                labels.append(label)
+            result = process_pdf(file_bytes, dpi=72, max_pages=1)
             text = " ".join(result.combined_text.split())
             if text:
-                pdf_text_parts.append(f"[{view_tag} - {name}] {text}")
-        else:
-            file_images = [Image.open(BytesIO(file_bytes))]
-
-        for img in file_images:
-            if len(images) >= config.MAX_TOTAL_IMAGES:
-                break
-            images.append(clean_drawing_image(img))
+                pdf_text_parts.append(f"[{name}] {text}")
+        elif len(images) < config.MAX_TOTAL_IMAGES:
+            images.append(clean_drawing_image(Image.open(BytesIO(file_bytes))))
             labels.append(f"{view_tag} ({name})")
 
-    pdf_text_hint = ""
+    hint_parts = []
+    if facts is not None:
+        from drawing_processing.package_analyzer import ai_hint_from_facts
+
+        hint_parts.append(ai_hint_from_facts(facts))
     if pdf_text_parts:
         joined = " | ".join(pdf_text_parts)[: config.MAX_PDF_TEXT_HINT_CHARS]
-        pdf_text_hint = "PDF text-layer content (exact text embedded in the drawing PDF): " + joined
-    return images, labels, pdf_text_hint
+        hint_parts.append("PDF text-layer content (exact text embedded in the drawing PDF): " + joined)
+    return images, labels, "\n".join(h for h in hint_parts if h)
+
+
+def _base_params(pi: ProjectInputs):
+    """Starting parameters: the 5-10 marla plot template when a plot size is
+    chosen, else the generic defaults of the unit system."""
+    return plot_templates.build_template_params(pi) or default_building_params(
+        wall_thickness_mm=pi.wall_thickness_mm, wall_material=pi.wall_material, unit_system=pi.unit_system
+    )
+
+
+def _finish_step_2(params, used_ai: bool) -> None:
+    """Values read from the drawings override AI/template/default values;
+    section levels also update the plinth/parapet assumptions."""
+    pi = st.session_state["project_inputs"]
+    facts = st.session_state.get("package_facts")
+    filled: list[str] = []
+    if facts is not None and facts.has_facts():
+        params, asm_updates, filled = apply_package_facts(params, facts, pi)
+        if asm_updates:
+            st.session_state["assumptions"] = st.session_state["assumptions"].model_copy(update=asm_updates)
+    st.session_state["drawing_filled"] = filled
+    st.session_state["extracted_params"] = params
+    st.session_state["used_ai"] = used_ai
+    go_to_step(3)
 
 
 def step_2():
-    st.header("Step 2 \u00b7 AI Drawing Analysis")
+    st.header("Step 2 \u00b7 Drawing Analysis")
+    pi: ProjectInputs = st.session_state["project_inputs"]
 
     uploaded_files = st.session_state.get("uploaded_files") or []
     if not uploaded_files:
-        st.info("No drawing was uploaded. You can go back to upload one, or skip straight to manual entry with standard defaults.")
+        if pi.plot_marla:
+            st.info(
+                f"No drawing uploaded - a typical {pi.plot_marla:g} marla house will be used as the starting point. "
+                "You can review and edit every value in Step 3, or go back and upload the drawings."
+            )
+        else:
+            st.info("No drawing was uploaded. You can go back to upload one, or skip straight to manual entry with standard defaults.")
         if st.button("\u2190 Back to Step 1"):
             go_to_step(1)
             st.rerun()
         if st.button("Skip AI \u2014 enter parameters manually", type="primary"):
-            st.session_state["extracted_params"] = default_building_params(
-                wall_thickness_mm=st.session_state["project_inputs"].wall_thickness_mm,
-                wall_material=st.session_state["project_inputs"].wall_material,
-                unit_system=st.session_state["project_inputs"].unit_system,
-            )
-            st.session_state["used_ai"] = False
-            go_to_step(3)
+            _finish_step_2(_base_params(pi), used_ai=False)
             st.rerun()
         return
 
+    # ---- 1. Free analysis of the whole package (text + vectors, no AI) ----
+    if st.session_state.get("package_facts") is None:
+        with st.spinner("Reading the drawing set (sheet titles, room sizes, levels, schedules, wall geometry)..."):
+            st.session_state["package_facts"] = analyze_package(uploaded_files, pi.plot_width_ft, pi.unit_system)
+    facts = st.session_state["package_facts"]
+
     if "uploaded_images" not in st.session_state or not st.session_state["uploaded_images"]:
-        with st.spinner("Processing uploaded drawing(s)..."):
-            images, labels, pdf_text_hint = _load_images_from_upload()
+        with st.spinner("Preparing the most useful pages for the AI..."):
+            images, labels, pdf_text_hint = _load_images_from_upload(facts)
             st.session_state["uploaded_images"] = images
             st.session_state["uploaded_image_labels"] = labels
             st.session_state["pdf_text_hint"] = pdf_text_hint
 
     images = st.session_state["uploaded_images"]
     labels = st.session_state.get("uploaded_image_labels") or []
-    file_names = ", ".join(f["name"] for f in uploaded_files)
-    st.write(f"**{len(images)} page/image(s)** processed from {len(uploaded_files)} file(s): `{file_names}`")
-    if len(images) >= config.MAX_TOTAL_IMAGES:
-        st.caption(f"Capped at {config.MAX_TOTAL_IMAGES} total images to stay within free-tier limits - some pages/files may have been left out.")
 
-    cols = st.columns(min(len(images), 4) or 1)
-    for i, img in enumerate(images):
-        with cols[i % len(cols)]:
-            st.image(img, caption=labels[i] if i < len(labels) else f"Page {i+1}", width="stretch")
-            if not estimate_is_drawing_like(img):
-                st.caption("\u26a0\ufe0f This doesn't look like a typical line drawing \u2014 results may be unreliable.")
+    st.markdown("##### \U0001f4d0 Drawing set analysis (free \u2014 no AI)")
+    if facts.has_facts():
+        _, _, preview = apply_package_facts(_base_params(pi), facts, pi)
+        st.success(
+            f"Read {len(preview)} value(s) directly from the drawings: {', '.join(preview)}. "
+            "These override AI and template values and are marked 'From drawings' in Step 3."
+        )
+    else:
+        st.info(
+            "No CAD text or vector data found (scanned drawings or photos). The AI will read the pages below; "
+            + ("the plot template fills anything it misses." if pi.plot_marla else "standard defaults fill anything it misses.")
+        )
+    sheet_rows = [
+        {"File": sh.file_name, "Page": sh.page_no, "Detected views": ", ".join(sh.views),
+         "Read from drawing": " | ".join(sh.findings) if sh.findings else "-"}
+        for sh in facts.sheets
+    ]
+    if sheet_rows:
+        st.dataframe(pd.DataFrame(sheet_rows), width="stretch", hide_index=True)
+    for c in facts.conflicts:
+        st.warning(c)
+
+    if images:
+        st.markdown(f"##### Pages the AI will read ({len(images)} of max {config.MAX_TOTAL_IMAGES})")
+        cols = st.columns(min(len(images), 4) or 1)
+        for i, img in enumerate(images):
+            with cols[i % len(cols)]:
+                st.image(img, caption=labels[i] if i < len(labels) else f"Page {i+1}", width="stretch")
+                if not estimate_is_drawing_like(img):
+                    st.caption("\u26a0\ufe0f This doesn't look like a typical line drawing \u2014 results may be unreliable.")
 
     if ocr_available():
         with st.expander("OCR text hints (used to help the AI, not for calculations)"):
@@ -452,57 +578,51 @@ def step_2():
     else:
         st.caption(
             "Optional OCR (EasyOCR) is not installed in this deployment \u2014 it is heavy for free hosting. "
-            "Install it with `pip install -r requirements-ocr.txt` to enable. Vector PDFs still pass their "
-            "embedded text to the AI below."
+            "Install it with `pip install -r requirements-ocr.txt` to enable. Vector PDFs are read directly (above)."
         )
 
     if st.session_state.get("pdf_text_hint"):
-        with st.expander("PDF text-layer hints (used to help the AI, not for calculations)"):
+        with st.expander("Hints passed to the AI (known values + PDF text)"):
             st.text(st.session_state["pdf_text_hint"])
 
     project_context = st.text_area(
         "Additional context for the AI (optional)",
         placeholder="e.g. 'This is a G+1 house, footings are isolated RCC pad footings, drawing is not to exact scale...'",
     )
-    # Wall material/thickness are rarely labelled on a simple line drawing,
-    # so the model has little to go on beyond a visual guess. Pass along
-    # what was already chosen in Step 1 as a prior it can use UNLESS the
-    # drawing clearly shows something else (see ai/prompts.py rule 1-3) -
-    # this also keeps it from drifting from Step 1's selection for no
-    # reason, which previously could leave the exported BOQ describing a
-    # different wall material than the one shown in the project info table.
-    _pi = st.session_state["project_inputs"]
+    # Wall material/thickness are rarely labelled on a simple line drawing;
+    # pass the Step 1 choice as a prior the AI uses unless the drawing
+    # clearly shows otherwise (see ai/prompts.py rules 1-3).
     _wall_hint = (
         f"Unless the drawing clearly shows otherwise, assume wall material "
-        f"'{_pi.wall_material}' and wall thickness {_pi.wall_thickness_mm}mm "
+        f"'{pi.wall_material}' and wall thickness {pi.wall_thickness_mm}mm "
         "(both chosen in Step 1)."
     )
-    project_context_for_ai = "\n".join(p for p in [project_context, _wall_hint] if p)
+    plot_hint = (
+        f"The house is on a {pi.plot_marla:g} marla plot ({pi.plot_marla * pi.marla_sqft:,.0f} sqft), {pi.plot_storeys} storey(s)."
+        if pi.plot_marla else ""
+    )
+    project_context_for_ai = "\n".join(p for p in [project_context, plot_hint, _wall_hint] if p)
 
     c1, c2 = st.columns(2)
     with c1:
-        analyze_clicked = st.button("\U0001f9e0 Analyze with Groq AI", type="primary", width="stretch")
+        analyze_clicked = st.button("\U0001f9e0 Analyze with AI (fills the remaining values)", type="primary", width="stretch")
     with c2:
-        skip_clicked = st.button("Skip AI \u2014 use standard defaults", width="stretch")
+        skip_clicked = st.button("Continue without AI", width="stretch")
 
     if skip_clicked:
-        st.session_state["extracted_params"] = default_building_params(
-            wall_thickness_mm=st.session_state["project_inputs"].wall_thickness_mm,
-            wall_material=st.session_state["project_inputs"].wall_material,
-            unit_system=st.session_state["project_inputs"].unit_system,
-        )
-        st.session_state["used_ai"] = False
-        go_to_step(3)
+        _finish_step_2(_base_params(pi), used_ai=False)
         st.rerun()
 
     if analyze_clicked:
         if not st.session_state["groq_api_key"]:
             st.error(
                 "No Groq API key is configured. Paste your own free key in the sidebar "
-                "(console.groq.com/keys), or use 'Skip AI — use standard defaults'."
+                "(console.groq.com/keys), or use 'Continue without AI' - values read from the drawings are still used."
             )
+        elif not images:
+            st.error("No pages to send to the AI - use 'Continue without AI'.")
         else:
-            with st.spinner("Calling Groq vision model to interpret the drawing... this can take up to ~30s"):
+            with st.spinner("Calling the vision model for the values not already read from the drawings... up to ~30s"):
                 params, raw_text, errors = extract_building_params(
                     api_key=st.session_state["groq_api_key"],
                     images=images,
@@ -511,15 +631,14 @@ def step_2():
                         h for h in [st.session_state.get("ocr_hint_text", ""), st.session_state.get("pdf_text_hint", "")] if h
                     ),
                     image_labels=labels,
-                    wall_thickness_mm=st.session_state["project_inputs"].wall_thickness_mm,
-                    wall_material=st.session_state["project_inputs"].wall_material,
-                    unit_system=st.session_state["project_inputs"].unit_system,
+                    wall_thickness_mm=pi.wall_thickness_mm,
+                    wall_material=pi.wall_material,
+                    unit_system=pi.unit_system,
+                    fallback_params=_base_params(pi),
                 )
-            st.session_state["extracted_params"] = params
             st.session_state["raw_ai_response"] = raw_text
             st.session_state["ai_errors"] = errors
-            st.session_state["used_ai"] = True
-            go_to_step(3)
+            _finish_step_2(params, used_ai=True)
             st.rerun()
 
     if st.button("\u2190 Back to Step 1"):
@@ -545,7 +664,15 @@ def step_3():
         for e in st.session_state["ai_errors"]:
             st.error(e)
 
-    if st.session_state.get("used_ai") and params.extraction_warnings:
+    if st.session_state.get("drawing_filled"):
+        st.success(
+            f"\u2705 {len(st.session_state['drawing_filled'])} value(s) were read directly from your drawings "
+            "(notes start with 'From drawings'). Check the rest - especially Low-confidence fields."
+        )
+
+    if (
+        st.session_state.get("used_ai") or st.session_state.get("drawing_filled") or st.session_state["project_inputs"].plot_marla
+    ) and params.extraction_warnings:
         with st.expander("\u26a0\ufe0f AI extraction warnings", expanded=True):
             for w in params.extraction_warnings:
                 st.warning(w)
