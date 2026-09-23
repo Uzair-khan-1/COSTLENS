@@ -1,11 +1,10 @@
 """
-Excel export of the Detailed Material Take-Off.
+Excel export of the Detailed Material Take-Off (quantities only - no costs).
 
 The workbook lists EVERY material of the Master Database (with status), the
 work-item BOQ, full traceability (material <- work item <- drawing input),
 all project inputs with source/confidence, rooms, openings, assumptions and
-benchmark checks. Rates are left blank (yellow) for the next step; Amount
-and totals are live Excel formulas, so filling rates prices the schedule.
+benchmark checks. Costs are intentionally excluded in this version.
 """
 from __future__ import annotations
 
@@ -23,7 +22,6 @@ from detailed_mto.engine import (ST_CALC, ST_CALC_ASSUMED, ST_NEEDS_INPUT, ST_NO
 FONT = "Arial"
 HDR_FILL = PatternFill("solid", fgColor="1F3864")
 SUB_FILL = PatternFill("solid", fgColor="D9E1F2")
-YELLOW = PatternFill("solid", fgColor="FFFF00")
 STATUS_FILL = {
     ST_CALC: PatternFill("solid", fgColor="E2EFDA"),
     ST_CALC_ASSUMED: PatternFill("solid", fgColor="FFF2CC"),
@@ -40,11 +38,24 @@ WRAP = Alignment(wrap_text=True, vertical="top")
 
 BENCHMARKS = [  # (label, numerator mat_ids, unit, low, high)
     ("Cement per sft covered area", ["CON-001"], "bags/sft", 0.30, 0.55),
-    ("Steel per sft covered area", ["RBR-001", "RBR-002", "RBR-003", "RBR-004"], "kg/sft", 1.5, 3.0),
+    ("Steel per sft covered area", ["RBR-001", "RBR-002", "RBR-003", "RBR-004"], "kg/sft", 1.5, 2.6),
     ("Bricks per sft covered area", ["MAS-001", "MAS-002"], "Nos/sft", 20, 35),
     ("Sand per sft covered area", ["CON-004", "CON-005"], "cft/sft", 1.2, 2.2),
     ("Crush per sft covered area", ["CON-006", "CON-007", "CON-008"], "cft/sft", 0.7, 1.4),
 ]
+
+
+def benchmarks_for(project):
+    """Load-bearing houses (strip foundations) carry less steel than RCC frames."""
+    out = []
+    frame = project.v("FDN_STRIP", 1.0) < 0.5
+    for label, ids, unit, lo, hi in BENCHMARKS:
+        if unit == "kg/sft" and frame:
+            label, lo, hi = label + " (RCC frame)", 2.5, 3.6
+        elif unit == "kg/sft":
+            label = label + " (load-bearing)"
+        out.append((label, ids, unit, lo, hi))
+    return out
 
 
 def _font(**kw):
@@ -91,9 +102,8 @@ def build_detailed_mto_workbook(result: DetailedResult) -> bytes:
     # ------------------------------------------------ Material_Schedule
     MH = ["Mat_ID", "Category", "Subcategory", "Material Description", "Specification/Grade", "Unit", "Net Qty",
           "Wastage %", "Qty incl. Wastage", "Purchase Qty", "Status", "Confidence", "Construction Stage", "Tier/Option",
-          "Calculation (traceable)", "Driven by Work Items", "Required Inputs", "Notes", "Info / If-selected Qty",
-          "Rate (PKR/unit)", "Amount (PKR)"]
-    ws = _sheet(wb, "Material_Schedule", MH, [9, 20, 15, 36, 26, 6, 11, 7, 12, 16, 16, 9, 9, 10, 60, 18, 24, 34, 10, 11, 13])
+          "Calculation (traceable)", "Driven by Work Items", "Required Inputs", "Notes", "Info / If-selected Qty"]
+    ws = _sheet(wb, "Material_Schedule", MH, [9, 20, 15, 36, 26, 6, 11, 7, 12, 16, 16, 9, 9, 10, 60, 18, 24, 34, 10])
     for i, m in enumerate(result.materials):
         r = i + 2
         mat = m.material
@@ -114,14 +124,9 @@ def build_detailed_mto_workbook(result: DetailedResult) -> bytes:
         _put(ws, r, 17, _txt(mat.required_inputs))
         _put(ws, r, 18, _txt(mat.notes))
         _put(ws, r, 19, round(m.if_selected_qty, 3) if m.if_selected_qty else None, fmt="#,##0.00")
-        _put(ws, r, 20, None, fill=YELLOW, fmt="#,##0.00", color="0000FF")
-        _put(ws, r, 21, f"=IF(T{r}=\"\",0,I{r}*T{r})", fmt="#,##0")
     n_last = len(result.materials) + 1
     ws.auto_filter.ref = f"A1:{get_column_letter(len(MH))}{n_last}"
     ws.freeze_panes = "E2"
-    tr = n_last + 1
-    _put(ws, tr, 4, "TOTAL (priced lines)", bold=True)
-    _put(ws, tr, 21, f"=SUM(U2:U{n_last})", bold=True, fmt="#,##0")
     SCH = f"Material_Schedule!$A$2:$A${n_last}"
 
     # ------------------------------------------------ Procurement_by_Stage
@@ -276,7 +281,7 @@ def build_detailed_mto_workbook(result: DetailedResult) -> bytes:
     _put(ws9, 2, 1, "Total covered area (all floors incl. mumty)", bold=True)
     _put(ws9, 2, 2, round(cov_total, 1), fmt="#,##0", color="0000FF")
     _put(ws9, 2, 3, "sft")
-    for i, (label, ids, unit, lo, hi) in enumerate(BENCHMARKS):
+    for i, (label, ids, unit, lo, hi) in enumerate(benchmarks_for(p)):
         r = i + 3
         refs = "+".join(f"SUMIF({SCH},\"{mid}\",Material_Schedule!$I$2:$I${n_last})" for mid in ids)
         _put(ws9, r, 1, label)
@@ -346,14 +351,11 @@ def build_detailed_mto_workbook(result: DetailedResult) -> bytes:
         _put(ws, r, 2, f"={refs}", fmt="#,##0")
         _put(ws, r, 3, unit)
     r += 2
-    _put(ws, r, 1, "Priced total (fill rates in Material_Schedule col T)", bold=True)
-    _put(ws, r, 2, f"=Material_Schedule!U{tr}", bold=True, fmt="#,##0")
-    _put(ws, r, 3, "PKR")
-    r += 2
     notes = [
         "Every material of the Master Material Database is listed in Material_Schedule with a status - nothing is silently dropped.",
         "Quantities are traceable: Material_Schedule -> Material_Breakdown (work item x coefficient) -> BOQ_Work_Items -> Project_Inputs / Rooms / Openings.",
-        "Blue values are inputs you may edit; yellow cells are rates to fill in. Amounts and totals recalculate automatically.",
+        "Blue values are inputs you may edit (wastage %, dimensions, counts); quantities incl. wastage recalculate automatically.",
+        "Costs are intentionally excluded in this version - this workbook is a quantity (material take-off) document only.",
         "Steel is by the ratio method until a structural BBS is available; electrical point counts use room-type defaults until symbols are verified.",
         "Indicative estimate for budgeting and procurement planning - not a substitute for professional design or a QS takeoff.",
     ]

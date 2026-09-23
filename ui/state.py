@@ -7,7 +7,8 @@ from __future__ import annotations
 
 import streamlit as st
 
-from ai.extraction import default_building_params
+from ai.extraction import default_building_params  # noqa: F401  (kept for backwards compatibility)
+from detailed_mto.model import Options
 from models.schemas import EngineeringAssumptions, ProjectInputs, WastageFactors
 from mto_boq.boq_generator import PRELIMINARIES_PCT_OF_CIVIL_SUBTOTAL
 from mto_boq.rates import load_default_rates
@@ -39,6 +40,15 @@ def init_session_state():
         "boq_items": None,
         "cost_summary": None,
         "used_ai": False,
+        # --- Detailed material take-off (Master Material Database) ---
+        "dmto_options": Options(),
+        "dmto_scan": None,  # detailed_mto.text_scanner.ScanResult for the uploaded set
+        "dmto_rooms": None,  # reviewed room rows (list of dicts) - seeded from the drawings in Step 3
+        "dmto_openings": None,  # reviewed door/window rows
+        "dmto_overrides": {},  # user-edited key counts/dimensions {param_key: value}
+        "dmto_ver": 0,  # bumps the review-table widget keys after edits are saved
+        "dmto_result": None,  # detailed_mto.engine.DetailedResult
+        "dmto_xlsx": None,  # (result id, bytes) cache of the export
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -69,6 +79,8 @@ def reset_project():
         "cost_summary",
         "used_ai",
         "drawing_uploader",  # clears the file_uploader widget itself
+        "dmto_options",
+        *DMTO_DERIVED_KEYS,
     ]
     for k in keys_to_clear:
         if k in st.session_state:
@@ -79,6 +91,18 @@ def reset_project():
     st.session_state["assumptions"] = EngineeringAssumptions.for_unit_system(ProjectInputs().unit_system)
     st.session_state["preliminaries_pct"] = PRELIMINARIES_PCT_OF_CIVIL_SUBTOTAL
     st.session_state["step"] = 1
+
+
+DMTO_DERIVED_KEYS = ["dmto_scan", "dmto_rooms", "dmto_openings", "dmto_overrides", "dmto_result", "dmto_xlsx"]
+
+
+def clear_dmto_review() -> None:
+    """Forget reviewed rooms/openings/counts so they are re-seeded from the (new) drawing analysis."""
+    for k in ["dmto_rooms", "dmto_openings", "dmto_overrides", "dmto_result", "dmto_xlsx"]:
+        if k in st.session_state:
+            del st.session_state[k]
+    st.session_state["dmto_ver"] = st.session_state.get("dmto_ver", 0) + 1
+    init_session_state()
 
 
 def clear_drawing_derived_state():
@@ -100,9 +124,11 @@ def clear_drawing_derived_state():
         "boq_items",
         "cost_summary",
         "used_ai",
+        *DMTO_DERIVED_KEYS,
     ]:
         if k in st.session_state:
             del st.session_state[k]
+    st.session_state["dmto_ver"] = st.session_state.get("dmto_ver", 0) + 1
     init_session_state()
 
 

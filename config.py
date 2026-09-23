@@ -12,9 +12,9 @@ import os
 from pathlib import Path
 
 APP_NAME = "CostLens"
-APP_TAGLINE = "From plans to price."
-APP_FULL_NAME = "CostLens - AI Residential MTO/BOQ Estimator"
-APP_VERSION = "0.4.0-mvp"
+APP_TAGLINE = "From plans to materials."
+APP_FULL_NAME = "CostLens - Drawing-based Material Take-Off for 5-10 marla houses"
+APP_VERSION = "0.5.0"
 
 # Brand assets (see assets/generate_logo.py to regenerate/tweak).
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
@@ -123,8 +123,8 @@ DISCLAIMER_TEXT = (
 # low-key caption rather than a large warning banner - the full legal
 # text above still appears in every exported Excel/PDF.
 DISCLAIMER_TEXT_SHORT = (
-    "Preliminary, AI-assisted estimate - not a certified structural or QS "
-    "estimate. Verify before tendering, construction, or financing."
+    "Preliminary, drawing-based material take-off - not a structural design or "
+    "certified QS takeoff. Verify quantities before procurement or construction."
 )
 
 

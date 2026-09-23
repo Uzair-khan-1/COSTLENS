@@ -58,3 +58,53 @@ def apply_openings(p: DetailedProject, rows: Iterable[dict], original: List[dict
 def apply_overrides(p: DetailedProject, overrides: Dict[str, float]) -> None:
     for k, v in (overrides or {}).items():
         p.override(k, v)
+
+
+# --------------------------------------------------------------------------
+# Row <-> object conversion for the review tables (session state keeps rows)
+# --------------------------------------------------------------------------
+ROOM_COLS = ["Floor", "Room", "Room type", "Length (ft)", "Width (ft)", "Source", "Confidence"]
+OPENING_COLS = ["Kind", "Name", "Width (ft)", "Height (ft)", "Qty", "Leaves", "Chogath (in)", "External", "Source", "Confidence"]
+
+
+def rows_to_rooms(rows: Iterable[dict]) -> List[Room]:
+    out = []
+    for r in rows:
+        name = str(r.get("Room", "") or "").strip()
+        if not name:
+            continue
+        L, W = _num(r.get("Length (ft)")), _num(r.get("Width (ft)"))
+        if L <= 0 or W <= 0:
+            continue
+        out.append(Room(str(r.get("Floor") or "ground"), name, str(r.get("Room type") or "Bedroom"), L, W,
+                        str(r.get("Source") or ""), str(r.get("Confidence") or USER)))
+    return out
+
+
+def rows_to_openings(rows: Iterable[dict]) -> List[OpeningGroup]:
+    out = []
+    for r in rows:
+        name = str(r.get("Name", "") or "").strip()
+        if not name:
+            continue
+        qty = int(_num(r.get("Qty")))
+        if qty <= 0:
+            continue
+        out.append(OpeningGroup(str(r.get("Kind") or "window"), name, _num(r.get("Width (ft)")), _num(r.get("Height (ft)")),
+                                qty, max(int(_num(r.get("Leaves"), 1)), 1), _num(r.get("Chogath (in)"), 5.0),
+                                bool(r.get("External")), str(r.get("Source") or ""), str(r.get("Confidence") or USER)))
+    return out
+
+
+def mark_user_edits(new_rows: List[dict], old_rows: List[dict], key_cols: List[str]) -> List[dict]:
+    """Rows that differ from the previously saved rows (or are new) become Source='User input', Confidence='User'."""
+    def sig(r):
+        return tuple(str(r.get(c)) for c in key_cols)
+    old = {sig(r) for r in old_rows}
+    out = []
+    for r in new_rows:
+        r = {k: (None if (isinstance(v, float) and v != v) else v) for k, v in r.items()}
+        if sig(r) not in old:
+            r["Source"], r["Confidence"] = "User input", USER
+        out.append(r)
+    return out

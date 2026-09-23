@@ -1,9 +1,9 @@
 # Detailed Material Schedule (Master Material Database)
 
-This feature adds a **complete, material-by-material take-off** to Step 5.
-It is additive: the existing Steps 1-5, the MTO/BOQ Excel and the PDF
-report are unchanged. The panel appears under the existing export buttons
-as **"Detailed Material Schedule (every material)"** with its own download.
+Since v0.5.0 the whole wizard runs on this engine: Step 1 sets the take-off
+specification, Step 2 reads the drawings, Step 3 reviews rooms / doors &
+windows / counts / structure, Step 4 shows the material take-off and Step 5
+exports it. Costs are intentionally excluded in this version.
 
 ## How it works
 
@@ -49,7 +49,7 @@ can correct it in the review tables.
 | Calculated (assumed inputs) | at least one input is a default - verify |
 | Provisional | owner-supplied / PC items (e.g. split AC units, decorative lights) |
 | Counted elsewhere (reference) | assembly or duplicate line, quantity shown for information only |
-| Option - not included | optional/alternative material; "If-selected Qty" shows what it would be |
+| Option - not included | optional/alternative material; "If-selected Qty" shows what it would be (tick "Quantify optional items" in Step 1 to include) |
 | Needs input | cannot be calculated without a user value |
 | Not required / Not in scope | zero for this project / outside selected scope |
 
@@ -84,23 +84,20 @@ in `detailed_mto/quantities.py`.
 The Benchmarks sheet flags cement, steel, bricks, sand and crush ratios per
 sft that fall outside typical ranges.
 
-## Files added
+## Main files
 
 ```
 data/master_material_database.xlsx   knowledge base (21 sheets)
 knowledge/loader.py                  Excel loader + formula evaluator + integrity checks
-detailed_mto/model.py                project model with provenance
-detailed_mto/text_scanner.py         extra text-layer extraction
-detailed_mto/builder.py              app state + drawing facts → project model
+detailed_mto/model.py                project model with provenance + take-off options
+detailed_mto/text_scanner.py         label scan (plumbing, door schedule, tanks)
+detailed_mto/builder.py              app state + drawing facts + reviewed rows -> project model
 detailed_mto/quantities.py           101 work-item calculators
 detailed_mto/direct.py               non-recipe material calculators
-detailed_mto/engine.py               roll-up, statuses, scope/options
-detailed_mto/edits.py                apply review-table edits
-detailed_mto/export.py               Excel export
-ui/detailed_mto_panel.py             Step 5 panel
+detailed_mto/engine.py               roll-up, statuses, scope/options, RCC mix
+detailed_mto/edits.py                review-table row conversions
+detailed_mto/export.py               Excel export (quantities only)
+ui/mto_views.py                      Step 2-5 views
 scripts/validate_knowledge_base.py   DB validation CLI
-tests/test_detailed_mto.py           12 tests
+tests/test_detailed_mto.py           17 tests
 ```
-
-Only change to existing code: a 9-line, try/except-guarded call to the panel
-at the end of Step 5 in `app.py`.

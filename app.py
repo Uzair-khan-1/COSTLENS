@@ -1,12 +1,16 @@
 """
-AI Residential MTO/BOQ Estimator - Streamlit entrypoint.
+Drawing-based Material Take-Off for 5-10 marla houses - Streamlit entrypoint.
 
 A 5-step wizard:
-  1. Project setup (technical inputs) + drawing upload
-  2. AI drawing interpretation (Groq) -> structured JSON
-  3. User verification/edit of every AI-extracted parameter
-  4. Deterministic MTO calculation + traceability breakdown
-  5. BOQ (rates + wastage) + cost estimate + Excel/PDF export
+  1. Project setup + take-off specification + drawing upload
+  2. Drawing analysis: CAD text/vector reading (free), label scan, optional AI
+  3. Review drawing data: rooms, doors & windows, counts & dimensions, structure
+  4. Material take-off: every material of the Master Material Database with
+     status, confidence, stage and full traceability
+  5. Export (Excel workbook + CSV)
+
+Costs are intentionally excluded in this version (quantities only). The
+legacy cost modules (mto_boq/, export/) are kept for the future pricing step.
 
 See README.md for the full architecture rationale.
 """
@@ -30,25 +34,12 @@ from engineering.calculations import external_perimeter_estimate, founding_depth
 from engineering.validation import validate_params
 from engineering import plot_templates
 from drawing_processing.package_analyzer import analyze_package, apply_package_facts, pages_for_ai, render_pages
-from export.excel_export import build_excel_workbook
-from export.pdf_export import build_pdf_report
+from detailed_mto import Options, scan_pdf_bytes
+from knowledge import load_knowledge_base
 from models.schemas import ConfidenceLevel, EngineeringAssumptions, Estimate, ProjectInputs, Source
-from mto_boq.boq_generator import boq_to_dataframe, cost_by_category, generate_boq
-from mto_boq.mto_generator import (
-    compute_procurement_totals,
-    compute_reinforcement_summary,
-    generate_mto,
-    group_by_category,
-    mto_to_dataframe,
-)
-from ui.components import (
-    confidence_badge,
-    render_assumptions_editor,
-    render_estimate_input,
-    render_rate_editor,
-    render_wastage_editor,
-)
-from ui.state import clear_drawing_derived_state, go_to_step, init_session_state, reset_project
+from ui.components import confidence_badge, render_estimate_input
+from ui import mto_views
+from ui.state import clear_dmto_review, clear_drawing_derived_state, go_to_step, init_session_state, reset_project
 from ui import theme
 from utils import units
 
@@ -76,21 +67,11 @@ if hasattr(st, "logo"):
     except Exception:
         pass
 
-STEP_LABELS = ["1. Project Setup", "2. AI Analysis", "3. Verify Data", "4. MTO", "5. BOQ & Export"]
+STEP_LABELS = ["1. Project Setup", "2. Drawing Analysis", "3. Review Data", "4. Material Take-Off", "5. Export"]
+TIERS = ["Economy", "Standard", "Premium"]
+TIER_TO_FINISH = {"Economy": "Basic", "Standard": "Standard", "Premium": "Premium"}
+RCC_MIXES = {"MX_RCC124": "1:2:4 (drawing spec, ~2500 psi)", "MX_RCC1153": "1:1.5:3 (~3000 psi, recommended zone 2B)"}
 
-
-def _grade_select_index(options: dict, stored_value: str, default_index: int) -> int:
-    """Finds `stored_value`'s position in options[grade_unit_key] so a grade
-    selectbox re-shows the project's actual saved grade instead of silently
-    snapping back to the hardcoded default every time Step 1 is revisited
-    (e.g. via "← Back to Step 1" after already submitting once). Checks
-    BOTH the "SI" and "FPS" lists (they're index-aligned - see
-    engineering/rules.py) since `stored_value` may have been saved while
-    the OTHER unit system was selected."""
-    for lst in (options.get("SI", []), options.get("FPS", [])):
-        if stored_value in lst:
-            return lst.index(stored_value)
-    return default_index
 
 # ---------------------------------------------------------------------------
 # Sidebar
@@ -100,7 +81,7 @@ with st.sidebar:
         # Older Streamlit without st.logo() support - fall back to a plain
         # text brand header so the name/tagline still show up somewhere.
         st.title(config.APP_NAME)
-    st.caption(f"v{config.APP_VERSION} \u00b7 MVP")
+    st.caption(f"v{config.APP_VERSION} \u00b7 Material Take-Off")
 
     # Optional user-supplied key (kept only in this browser session's
     # memory, never written to disk). It takes priority over the
@@ -140,7 +121,8 @@ def _uploads_signature(files: list) -> tuple:
 # ---------------------------------------------------------------------------
 def step_1():
     st.header("Step 1 \u00b7 Project Setup & Drawing Upload")
-    st.write("Enter basic project details and upload a simple residential drawing (plan, structural layout, or section).")
+    st.write("Enter the project details, choose the take-off specification and upload the complete drawing set "
+             "(architectural, structural, plumbing and electrical sheets).")
 
     pi: ProjectInputs = st.session_state["project_inputs"]
 
@@ -227,80 +209,51 @@ def step_1():
     with c1:
         project_name = st.text_input("Project Name", pi.project_name)
         client_name = st.text_input("Client Name (optional)", pi.client_name)
-        location = st.text_input("Location / City", pi.location)
-        soil_type = st.selectbox(
-            "Soil Type", list(rules.SOIL_SIDE_SLOPE_FACTOR.keys()),
-            index=list(rules.SOIL_SIDE_SLOPE_FACTOR.keys()).index(pi.soil_type) if pi.soil_type in rules.SOIL_SIDE_SLOPE_FACTOR else 1,
-        )
-        finish_level = st.selectbox(
-            "Finish Level",
-            ["Basic", "Standard", "Premium"],
-            index=["Basic", "Standard", "Premium"].index(pi.finish_level),
-            help=(
-                "Controls the quality/cost grade of Flooring, Painting, Plaster, Doors, Windows, Electrical, "
-                "Plumbing & Sanitary and Kitchen only - it never changes any quantity (the same area still "
-                "gets floored/painted/plastered). Basic = economy ceramic tile, distemper, single-coat "
-                "plaster, economy fittings. Standard = mid-range vitrified tile, plastic emulsion, smooth "
-                "double-coat plaster, mid-range branded fittings (the rate book's default pricing). "
-                "Premium = imported porcelain/marble, weathershield/texture paint, putty-finished plaster, "
-                "premium/imported fittings. Adjusts the relevant BOQ rates automatically in Step 5 - see "
-                "engineering/rules.py FINISH_LEVEL_RATE_MULTIPLIERS for the multipliers used."
-            ),
-        )
     with c2:
+        location = st.text_input("Location / City", pi.location)
         grade_unit_key = units.FPS if unit_system == units.FPS else units.SI
-        wall_material_options = list(rules.MASONRY_UNIT_SIZES_M.keys())
         wall_thickness_options = units.WALL_THICKNESS_OPTIONS_MM[grade_unit_key]
-        concrete_grade = st.selectbox(
-            "Concrete Grade (structural members)",
-            rules.CONCRETE_GRADE_OPTIONS[grade_unit_key],
-            index=_grade_select_index(rules.CONCRETE_GRADE_OPTIONS, pi.concrete_grade_footing, rules.CONCRETE_GRADE_DEFAULT_INDEX),
-        )
-        pcc_grade = st.selectbox(
-            "PCC Grade",
-            rules.PCC_GRADE_OPTIONS[grade_unit_key],
-            index=_grade_select_index(rules.PCC_GRADE_OPTIONS, pi.pcc_grade, rules.PCC_GRADE_DEFAULT_INDEX),
-        )
-        steel_grade = st.selectbox(
-            "Steel Grade",
-            rules.STEEL_GRADE_OPTIONS[grade_unit_key],
-            index=_grade_select_index(rules.STEEL_GRADE_OPTIONS, pi.steel_grade, rules.STEEL_GRADE_DEFAULT_INDEX),
-        )
-        wall_material = st.selectbox(
-            "Wall Material",
-            wall_material_options,
-            index=wall_material_options.index(pi.wall_material) if pi.wall_material in wall_material_options else 0,
-            format_func=lambda v: units.relabel_wall_material(v, unit_system),
-        )
         # A value saved under the other unit system (e.g. 230 mm) maps to
         # the nearest option of this one (228.6 mm = 9").
         current_wall_mm = units.nearest_option(pi.wall_thickness_mm, wall_thickness_options)
         wall_thickness_mm = st.selectbox(
-            "Wall Thickness",
+            "Main (external/load-bearing) wall thickness",
             wall_thickness_options,
             index=wall_thickness_options.index(current_wall_mm) if current_wall_mm in wall_thickness_options else 3,
             format_func=lambda mm: units.wall_thickness_label(mm, unit_system),
+            help="Used only when the drawings are scanned images (CAD PDFs give measured wall thicknesses).",
         )
 
-    st.markdown("##### Finishes & scope toggles")
-    t1, t2, t3, t4, t5 = st.columns(5)
-    include_flooring = t1.checkbox("Flooring", value=pi.include_flooring)
-    include_waterproofing = t2.checkbox("Waterproofing", value=pi.include_waterproofing)
-    include_painting = t3.checkbox("Painting", value=pi.include_painting)
-    include_dpc = t4.checkbox("DPC", value=pi.include_dpc)
-    include_anti_termite = t5.checkbox("Anti-termite", value=pi.include_anti_termite)
-    u1, u2, u3, u4, _u5 = st.columns(5)
-    include_mep = u1.checkbox(
-        "MEP & sanitary", value=pi.include_mep,
-        help="Electrical works, bathroom plumbing & sanitary fittings, kitchen, external water supply & drainage.",
+    # ---- Take-off specification (drives which materials are quantified) ----
+    opts: Options = st.session_state["dmto_options"]
+    kb = load_knowledge_base()
+    st.markdown("##### Take-off scope & specification")
+    st.caption(
+        "These choices decide WHICH materials are quantified (e.g. traditional roof = bitumen + earth + brick tiles; "
+        "insulated roof = EPS/XPS + membrane). Quantities always come from the drawings. Costs are not part of this version."
     )
-    include_staircase = u2.checkbox("Staircase", value=pi.include_staircase, help="RCC stair to every slab level incl. roof access.")
-    include_parapet = u3.checkbox("Roof parapet", value=pi.include_parapet)
-    include_roof_treatment = u4.checkbox(
-        "Roof insulation/tiles", value=pi.include_roof_treatment, help="Mud/earth fill + brick or tuff tiles over the roof slab."
-    )
-
-    contingency_pct = st.slider("Contingency % (on total cost)", 0.0, 20.0, pi.contingency_pct, 0.5)
+    s1, s2, s3, s4 = st.columns(4)
+    scope = s1.selectbox("Scope", kb.scope_names, index=kb.scope_names.index(opts.scope) if opts.scope in kb.scope_names else 0,
+                         help="Complete Project, a single discipline, or the Pakistani 'Grey Structure' / 'Finishing' contract packages.")
+    tier = s2.selectbox("Finish tier", TIERS, index=TIERS.index(opts.finish_tier) if opts.finish_tier in TIERS else 1,
+                        help="Economy skips false ceilings/cornices and built-in kitchen appliances; Premium adds items such as "
+                        "linear shower drains, recirculation pump and built-in oven.")
+    mix_keys = list(RCC_MIXES)
+    rcc_mix = s3.selectbox("Structural RCC mix", mix_keys, index=mix_keys.index(opts.rcc_mix) if opts.rcc_mix in mix_keys else 0,
+                           format_func=lambda k: RCC_MIXES[k],
+                           help="Applies to footings, columns, beams, slabs and stairs. Tanks, lintels and DPC keep their drawing mixes.")
+    roof = s4.selectbox("Roof treatment", ["Traditional", "Insulated"], index=["Traditional", "Insulated"].index(opts.roof_system),
+                        help="Traditional = 2 coats bitumen + polythene + earth + mud plaster + brick tiles. "
+                        "Insulated = EPS/XPS board + membrane + screed.")
+    s5, s6, s7, s8 = st.columns(4)
+    masonry = s5.selectbox("Walling", ["Brick", "Block"], index=["Brick", "Block"].index(opts.masonry))
+    gas = s6.selectbox("Gas supply", ["SNGPL", "LPG", "None"], index=["SNGPL", "LPG", "None"].index(opts.gas_source),
+                       help="New SNGPL domestic connections are restricted - choose LPG if the house will use cylinders.")
+    fc = s7.checkbox("False ceilings", value=opts.include_false_ceiling)
+    rwh = s7.checkbox("Rainwater recharge well", value=opts.include_rwh, help="CDA requires rainwater harvesting/recharge (not shown in most drawing sets).")
+    bands = s8.checkbox("Seismic lintel bands", value=opts.seismic_bands, help="Recommended for load-bearing masonry in Islamabad/Rawalpindi (BCP zone 2B).")
+    include_opt = s8.checkbox("Quantify optional items too", value=opts.include_options,
+                              help="Also include Optional/Alternative/Premium materials in the take-off.")
 
     st.markdown("##### Drawing Upload")
     st.caption(
@@ -357,39 +310,27 @@ def step_1():
             st.session_state["uploaded_signature"] = None
             st.rerun()
 
-    submitted = st.button("Continue to AI Analysis →", width="stretch", type="primary")
+    submitted = st.button("Continue to Drawing Analysis →", width="stretch", type="primary")
 
     if submitted:
-        st.session_state["project_inputs"] = ProjectInputs(
+        st.session_state["project_inputs"] = pi.model_copy(update=dict(
             project_name=project_name or "Untitled Project",
             client_name=client_name,
             location=location,
-            soil_type=soil_type,
-            concrete_grade_footing=concrete_grade,
-            concrete_grade_column=concrete_grade,
-            concrete_grade_beam=concrete_grade,
-            concrete_grade_slab=concrete_grade,
-            pcc_grade=pcc_grade,
-            steel_grade=steel_grade,
-            wall_material=wall_material,
             wall_thickness_mm=wall_thickness_mm,
-            finish_level=finish_level,
-            include_flooring=include_flooring,
-            include_waterproofing=include_waterproofing,
-            include_painting=include_painting,
-            include_dpc=include_dpc,
-            include_anti_termite=include_anti_termite,
-            include_mep=include_mep,
-            include_staircase=include_staircase,
-            include_parapet=include_parapet,
-            include_roof_treatment=include_roof_treatment,
-            contingency_pct=contingency_pct,
+            finish_level=TIER_TO_FINISH.get(tier, "Standard"),
             unit_system=unit_system,
             plot_marla=plot_marla,
             marla_sqft=marla_sqft,
             plot_width_ft=plot_width_ft,
             plot_storeys=plot_storeys,
-        )
+        ))
+        new_opts = Options(scope=scope, finish_tier=tier, roof_system=roof, masonry=masonry, gas_source=gas,
+                           include_false_ceiling=fc, include_rwh=rwh, include_options=include_opt, seismic_bands=bands,
+                           rcc_mix=rcc_mix)
+        if new_opts != opts:
+            st.session_state["dmto_options"] = new_opts
+            st.session_state["dmto_result"] = None
         # If the drawings (or their view tags) changed since the last
         # analysis, drop every cached image/OCR/AI result derived from the
         # old ones - otherwise Step 2 would analyse the stale drawings.
@@ -398,11 +339,7 @@ def step_1():
             # unit system's round values - unless the user edited them.
             if st.session_state["assumptions"] == EngineeringAssumptions.for_unit_system(pi.unit_system):
                 st.session_state["assumptions"] = EngineeringAssumptions.for_unit_system(unit_system)
-            # MTO/BOQ text (descriptions, traces) is produced in the unit
-            # system it was calculated in - never show it under the other one.
-            for k in ("mto_items", "boq_items", "cost_summary"):
-                st.session_state[k] = None
-            st.session_state["export_cache"] = {}
+            st.session_state["dmto_result"] = None
         new_pi = st.session_state["project_inputs"]
         plot_key = lambda x: (x.plot_marla, x.marla_sqft, x.plot_width_ft, x.plot_storeys)  # noqa: E731
         if unit_system != pi.unit_system or plot_key(pi) != plot_key(new_pi):
@@ -415,6 +352,7 @@ def step_1():
             # width as a hint - redo it for the new settings.
             st.session_state["package_facts"] = None
             st.session_state["uploaded_images"] = []
+            clear_dmto_review()
         signature = _uploads_signature(uploaded_files_with_tags)
         if signature != st.session_state.get("uploaded_signature"):
             clear_drawing_derived_state()
@@ -497,6 +435,7 @@ def _finish_step_2(params, used_ai: bool) -> None:
     st.session_state["drawing_filled"] = filled
     st.session_state["extracted_params"] = params
     st.session_state["used_ai"] = used_ai
+    clear_dmto_review()  # rooms/openings/counts are re-seeded from this analysis in Step 3
     go_to_step(3)
 
 
@@ -526,6 +465,12 @@ def step_2():
         with st.spinner("Reading the drawing set (sheet titles, room sizes, levels, schedules, wall geometry)..."):
             st.session_state["package_facts"] = analyze_package(uploaded_files, pi.plot_width_ft, pi.unit_system)
     facts = st.session_state["package_facts"]
+    if st.session_state.get("dmto_scan") is None:
+        with st.spinner("Reading plumbing labels, door schedule and tank details..."):
+            try:
+                st.session_state["dmto_scan"] = scan_pdf_bytes(uploaded_files)
+            except Exception:
+                st.session_state["dmto_scan"] = None
 
     if "uploaded_images" not in st.session_state or not st.session_state["uploaded_images"]:
         with st.spinner("Preparing the most useful pages for the AI..."):
@@ -538,6 +483,8 @@ def step_2():
     labels = st.session_state.get("uploaded_image_labels") or []
 
     st.markdown("##### \U0001f4d0 Drawing set analysis (free \u2014 no AI)")
+    st.caption("CAD-exported PDFs are read directly: sheet types, room names and sizes, wall lengths by thickness, levels, "
+               "foundation sections, schedules and service labels. The AI is optional.")
     if facts.has_facts():
         _, _, preview = apply_package_facts(_base_params(pi), facts, pi)
         st.success(
@@ -558,6 +505,7 @@ def step_2():
         st.dataframe(pd.DataFrame(sheet_rows), width="stretch", hide_index=True)
     for c in facts.conflicts:
         st.warning(c)
+    mto_views.render_scan_summary(st.session_state.get("dmto_scan"))
 
     if images:
         st.markdown(f"##### Pages the AI will read ({len(images)} of max {config.MAX_TOTAL_IMAGES})")
@@ -605,9 +553,11 @@ def step_2():
 
     c1, c2 = st.columns(2)
     with c1:
-        analyze_clicked = st.button("\U0001f9e0 Analyze with AI (fills the remaining values)", type="primary", width="stretch")
+        skip_clicked = st.button("Continue with drawing data \u2192", type="primary", width="stretch",
+                                 help="Recommended for CAD PDFs: everything read from the drawings is used; defaults fill the rest.")
     with c2:
-        skip_clicked = st.button("Continue without AI", width="stretch")
+        analyze_clicked = st.button("\U0001f9e0 Also ask the AI for missing values", width="stretch",
+                                    help="Optional. Sends the most useful pages to the Groq vision model for values not read from the drawings.")
 
     if skip_clicked:
         _finish_step_2(_base_params(pi), used_ai=False)
@@ -647,46 +597,12 @@ def step_2():
 
 
 # ---------------------------------------------------------------------------
-# STEP 3 — Verification / edit
+# STEP 3 — Review drawing data
 # ---------------------------------------------------------------------------
-def step_3():
-    st.header("Step 3 \u00b7 Verify & Edit Extracted Parameters")
-    params = st.session_state["extracted_params"]
-    unit_system = st.session_state["project_inputs"].unit_system
-    if units.is_fps(unit_system):
-        st.caption(
-            "Unit system: **FPS** (Pakistani practice) - enter lengths in feet, member sizes and thicknesses in "
-            "inches, and areas in sqft. Every quantity, calculation trace and export is produced in FPS; "
-            "switch to SI in Step 1 at any time."
-        )
-
-    if st.session_state.get("ai_errors"):
-        for e in st.session_state["ai_errors"]:
-            st.error(e)
-
-    if st.session_state.get("drawing_filled"):
-        st.success(
-            f"\u2705 {len(st.session_state['drawing_filled'])} value(s) were read directly from your drawings "
-            "(notes start with 'From drawings'). Check the rest - especially Low-confidence fields."
-        )
-
-    if (
-        st.session_state.get("used_ai") or st.session_state.get("drawing_filled") or st.session_state["project_inputs"].plot_marla
-    ) and params.extraction_warnings:
-        with st.expander("\u26a0\ufe0f AI extraction warnings", expanded=True):
-            for w in params.extraction_warnings:
-                st.warning(w)
-
-    if params.overall_notes:
-        st.info(f"**AI notes:** {params.overall_notes}")
-
-    legend = " ".join(confidence_badge(c) for c in [ConfidenceLevel.HIGH, ConfidenceLevel.MEDIUM, ConfidenceLevel.LOW])
-    st.markdown(
-        "Review every value below and edit anything that doesn't match your actual drawing. "
-        f"Confidence levels: {legend}",
-        unsafe_allow_html=True,
-    )
-
+def _render_structure_inputs(params, unit_system):
+    """Structural parameters (columns, beams, slab, footings) and fallbacks for
+    scanned drawings. Rooms, walls, doors and services read from CAD PDFs take
+    precedence in the material take-off."""
     with st.expander("General", expanded=True):
         c1, c2 = st.columns(2)
         with c1:
@@ -781,7 +697,7 @@ def step_3():
         with c2:
             params.slabs.thickness_m = render_estimate_input("Thickness", params.slabs.thickness_m, "slab_t", step=0.005, unit_system=unit_system, quantity_kind="thickness")
 
-    with st.expander("Walls / Masonry", expanded=True):
+    with st.expander("Walls / Masonry (fallback when walls are not measured from CAD)", expanded=False):
         c1, c2, c3 = st.columns(3)
         with c1:
             params.walls.total_length_per_floor_m = render_estimate_input("Total wall length/floor", params.walls.total_length_per_floor_m, "wall_len", step=0.5, unit_system=unit_system, quantity_kind="length")
@@ -803,7 +719,7 @@ def step_3():
             index=list(rules.MASONRY_UNIT_SIZES_M.keys()).index(params.walls.wall_material) if params.walls.wall_material in rules.MASONRY_UNIT_SIZES_M else 0,
         )
 
-    with st.expander("Openings (doors/windows)", expanded=True):
+    with st.expander("Fallback: doors & windows (used only when the drawings give no schedule)", expanded=False):
         c1, c2, c3, c4 = st.columns(4)
         with c1:
             params.openings.door_count_per_floor = render_estimate_input("Doors/floor", params.openings.door_count_per_floor, "door_count", "nos", step=1.0)
@@ -814,244 +730,170 @@ def step_3():
         with c4:
             params.openings.avg_window_area_sqm = render_estimate_input("Avg window area", params.openings.avg_window_area_sqm, "win_area", step=0.05, unit_system=unit_system, quantity_kind="area")
 
-    with st.expander("Services (drives MEP & sanitary lines)", expanded=True):
+    with st.expander("Fallback: bathrooms & kitchens (used only when no room list is read)", expanded=False):
         c1, c2 = st.columns(2)
         with c1:
             params.services.bathroom_count_total = render_estimate_input("Bathrooms (whole building)", params.services.bathroom_count_total, "svc_baths", "nos", step=1.0)
         with c2:
             params.services.kitchen_count_total = render_estimate_input("Kitchens (whole building)", params.services.kitchen_count_total, "svc_kitchens", "nos", step=1.0)
 
-    with st.expander("Engineering assumptions (thumb rules & key defaults)", expanded=False):
-        st.session_state["assumptions"] = render_assumptions_editor(st.session_state["assumptions"], unit_system)
+    return params
 
-    st.session_state["extracted_params"] = params
 
-    errors, warnings = validate_params(params, st.session_state["project_inputs"], st.session_state["assumptions"])
-    if errors or warnings:
-        st.markdown("##### Input checks")
-        for e in errors:
+def step_3():
+    st.header("Step 3 \u00b7 Review Drawing Data")
+    pi: ProjectInputs = st.session_state["project_inputs"]
+    params = st.session_state["extracted_params"]
+    unit_system = pi.unit_system
+
+    if st.session_state.get("ai_errors"):
+        for e in st.session_state["ai_errors"]:
             st.error(e)
-        for w in warnings:
-            st.warning(w)
-        if errors:
-            st.caption("Fix the errors above to continue - the calculation would otherwise produce meaningless quantities.")
+    facts = st.session_state.get("package_facts")
+    n_rooms = sum(len(f.rooms) for f in facts.floors.values()) if (facts is not None and facts.has_facts()) else 0
+    if n_rooms:
+        st.success(
+            f"\u2705 Read from the drawings: {n_rooms} rooms with sizes, wall lengths by thickness, levels and "
+            f"{len(st.session_state.get('drawing_filled') or [])} structural value(s). Check the tabs below - values marked "
+            "\u26aa are defaults, \U0001f7e2 come from the drawings."
+        )
+    else:
+        st.info("No CAD room data was read (scanned drawings or no upload). Rooms and counts below are generated from the "
+                "plot template / Step 3 values - please correct them.")
+    if (st.session_state.get("used_ai") or st.session_state.get("drawing_filled") or pi.plot_marla) and params.extraction_warnings:
+        with st.expander("\u26a0\ufe0f Extraction warnings", expanded=False):
+            for w in params.extraction_warnings:
+                st.warning(w)
+    if params.overall_notes:
+        st.info(f"**AI notes:** {params.overall_notes}")
+    st.caption(mto_views.options_summary(st.session_state["dmto_options"]) + " (change in Step 1)")
 
-    c1, c2 = st.columns(2)
+    mto_views.seed_review_rows(pi, params)
+    t_rooms, t_open, t_counts, t_struct, t_coef = st.tabs(
+        ["\U0001f3e0 Rooms", "\U0001f6aa Doors & windows", "\U0001f522 Counts & dimensions", "\U0001f3d7\ufe0f Structure",
+         "\U0001f4da Coefficients"])
+    with t_struct:
+        if units.is_fps(unit_system):
+            st.caption("FPS units: lengths in feet, member sizes in inches, areas in sqft.")
+        legend = " ".join(confidence_badge(c) for c in [ConfidenceLevel.HIGH, ConfidenceLevel.MEDIUM, ConfidenceLevel.LOW])
+        st.markdown(f"Columns, beams, slab and footings used for concrete, steel and formwork. Confidence: {legend}",
+                    unsafe_allow_html=True)
+        params = _render_structure_inputs(params, unit_system)
+        st.session_state["extracted_params"] = params
+    with t_rooms:
+        room_rows = mto_views.render_rooms_editor()
+    with t_open:
+        opening_rows = mto_views.render_openings_editor()
+    with t_counts:
+        mto_views.render_counts_editor(pi, params, room_rows, opening_rows)
+    with t_coef:
+        mto_views.render_coefficients()
+
+    errors, warnings = validate_params(params, pi, st.session_state["assumptions"])
+    if errors or warnings:
+        with st.expander(f"Input checks ({len(errors)} error(s), {len(warnings)} warning(s))", expanded=bool(errors)):
+            for e in errors:
+                st.error(e)
+            for w in warnings:
+                st.warning(w)
+
+    c1, c2, c3 = st.columns([1, 1, 2])
     with c1:
         if st.button("\u2190 Back to Step 2"):
+            mto_views.save_review(room_rows, opening_rows)
             go_to_step(2)
             st.rerun()
     with c2:
-        if st.button("Confirm & Calculate MTO \u2192", type="primary", width="stretch", disabled=bool(errors)):
-            with st.spinner("Running deterministic engineering calculations..."):
-                st.session_state["mto_items"] = generate_mto(
-                    params, st.session_state["project_inputs"], st.session_state["assumptions"]
-                )
+        if st.button("\U0001f504 Apply table edits", help="Saves the Rooms / Doors & windows tables and refreshes the counts derived from them."):
+            mto_views.save_review(room_rows, opening_rows)
+            st.rerun()
+    with c3:
+        if st.button("Calculate Material Take-Off \u2192", type="primary", width="stretch", disabled=bool(errors)):
+            mto_views.save_review(room_rows, opening_rows)
+            with st.spinner("Calculating every material from the drawing data..."):
+                mto_views.run_takeoff(pi, params)
             go_to_step(4)
             st.rerun()
 
 
 # ---------------------------------------------------------------------------
-# STEP 4 — MTO
+# STEP 4 — Material take-off
 # ---------------------------------------------------------------------------
 def step_4():
-    st.header("Step 4 \u00b7 Material Take-Off (MTO)")
-    mto_items = st.session_state["mto_items"]
-    unit_system = st.session_state["project_inputs"].unit_system
-
-    summary = compute_reinforcement_summary(mto_items, unit_system)
-    badge_color = "green" if summary["status"] == "OK" else "orange"
-    st.markdown(f":{badge_color}[**Steel sanity check:** {summary['message']}]")
-
-    st.markdown("##### \U0001f4e6 Procurement summary")
-    st.caption(
-        "Project-wide cement/sand/aggregate totals - already priced within the composite rates below, "
-        "shown here purely as the quantities to hand to a supplier. Net theoretical figures; add your own "
-        "site wastage margin (commonly 3-5% for cement, 5-10% for sand/aggregate) before ordering."
-    )
-    totals = compute_procurement_totals(mto_items)
-    sand_qty, sand_unit = units.quantity_and_unit_for_display(totals["sand_m3"], "m3", unit_system)
-    agg_qty, agg_unit = units.quantity_and_unit_for_display(totals["aggregate_m3"], "m3", unit_system)
-    pc1, pc2, pc3 = st.columns(3)
-    pc1.metric("Cement", f"{totals['cement_bags']:,.0f} bags")
-    pc2.metric("Sand", f"{sand_qty:,.1f} {sand_unit}")
-    pc3.metric("Aggregate/Crush", f"{agg_qty:,.1f} {agg_unit}")
-
-    if units.is_fps(unit_system):
-        st.caption(
-            "Unit system: FPS - quantities, formulas, calculation inputs and assumptions below are all in "
-            "feet/inches, sqft and cft (steel in kg, cement in bags)."
-        )
-
-    show_procurement_rows = st.checkbox(
-        "Show cement/sand/aggregate & mortar breakdown rows in the table below",
-        value=True,
-        help="Uncheck to see just the main structural/finish items - the procurement breakdown rows are still fully counted above and in the export files either way.",
-    )
-    display_items = mto_items if show_procurement_rows else [i for i in mto_items if not i.informational]
-    df = mto_to_dataframe(display_items, unit_system=unit_system)
-    st.dataframe(df, width="stretch", hide_index=True)
-
-    st.markdown("##### Calculation breakdown / traceability")
-    grouped = group_by_category(mto_items)
-    for category, items in grouped.items():
-        with st.expander(f"{category} ({len(items)} item{'s' if len(items) != 1 else ''})"):
-            for item in items:
-                display_qty, display_unit = units.quantity_and_unit_for_display(item.quantity, item.unit, unit_system)
-                st.markdown(f"**{item.item_code} \u2014 {item.description}**  {confidence_badge(item.confidence)}", unsafe_allow_html=True)
-                st.write(f"Quantity: **{display_qty:,.3f} {display_unit}**")
-                if item.informational:
-                    st.caption(f"\U0001f4e6 Procurement reference only - already priced under **{item.parent_item_code}** above; do not add its cost again.")
-                st.caption(f"Formula: {item.formula}" if units.is_fps(unit_system) else f"Formula (metric): {item.formula}")
-                if item.inputs_used:
-                    st.caption("Inputs used: " + ", ".join(f"{k}={v}" for k, v in item.inputs_used.items()))
-                for a in item.assumptions:
-                    st.caption(f"\u2022 {a}")
-                st.markdown("---")
+    st.header("Step 4 \u00b7 Material Take-Off")
+    pi: ProjectInputs = st.session_state["project_inputs"]
+    res = st.session_state.get("dmto_result")
+    if res is None:
+        if st.session_state.get("extracted_params") is None:
+            st.info("Complete Steps 1-3 first.")
+            if st.button("\u2190 Back to Step 1"):
+                go_to_step(1)
+                st.rerun()
+            return
+        res = mto_views.run_takeoff(pi, st.session_state["extracted_params"])
+    st.caption(mto_views.options_summary(st.session_state["dmto_options"]) +
+               " \u00b7 All quantities in Pakistani FPS units (cft, sft, rft, bags, kg, Nos). Costs are not included in this version.")
+    mto_views.render_takeoff(res)
 
     c1, c2 = st.columns(2)
     with c1:
-        if st.button("\u2190 Back to Step 3 (edit parameters)"):
+        if st.button("\u2190 Back to Step 3 (review data)"):
             go_to_step(3)
             st.rerun()
     with c2:
-        if st.button("Continue to BOQ & Cost Estimate \u2192", type="primary", width="stretch"):
+        if st.button("Continue to Export \u2192", type="primary", width="stretch"):
             go_to_step(5)
             st.rerun()
 
 
 # ---------------------------------------------------------------------------
-# STEP 5 — BOQ & export
+# STEP 5 — Export
 # ---------------------------------------------------------------------------
-def _cached_exports(pi: ProjectInputs, boq_items, cost_summary, preliminaries_pct: float) -> tuple[bytes, bytes]:
-    """Builds the Excel/PDF exports only when their content changes (they
-    used to be rebuilt on every single rerun of Step 5)."""
-    h = hashlib.sha256()
-    h.update(pi.model_dump_json().encode())
-    h.update(st.session_state["extracted_params"].model_dump_json().encode())
-    for item in st.session_state["mto_items"]:
-        h.update(item.model_dump_json().encode())
-    for item in boq_items:
-        h.update(item.model_dump_json().encode())
-    h.update(cost_summary.model_dump_json().encode())
-    h.update(str(preliminaries_pct).encode())
-    key = h.hexdigest()
-    cache = st.session_state.get("export_cache") or {}
-    if key not in cache:
-        excel_bytes = build_excel_workbook(
-            pi, st.session_state["extracted_params"], st.session_state["mto_items"], boq_items, cost_summary,
-            preliminaries_pct=preliminaries_pct,
-        )
-        pdf_bytes = build_pdf_report(
-            pi, st.session_state["extracted_params"], st.session_state["mto_items"], boq_items, cost_summary
-        )
-        cache = {key: (excel_bytes, pdf_bytes)}  # keep only the latest
-        st.session_state["export_cache"] = cache
-    return cache[key]
-
-
 def step_5():
-    st.header("Step 5 \u00b7 BOQ, Cost Estimate & Export")
-
-    pi = st.session_state["project_inputs"]
-
-    st.caption(
-        f"Finish Level: **{pi.finish_level}** (set in Step 1) - Flooring, Painting, Plaster, Doors, Windows, "
-        "Electrical, Plumbing & Sanitary and Kitchen rates below are automatically scaled for this grade; every "
-        "other rate is unaffected. Change it in Step 1 and recalculate to compare tiers."
+    st.header("Step 5 \u00b7 Export")
+    pi: ProjectInputs = st.session_state["project_inputs"]
+    res = st.session_state.get("dmto_result")
+    if res is None:
+        st.info("Calculate the material take-off first (Step 3).")
+        if st.button("\u2190 Back to Step 3"):
+            go_to_step(3)
+            st.rerun()
+        return
+    counts = res.status_counts()
+    st.markdown(
+        f"**{pi.project_name}** \u2014 {len(res.materials)} materials listed, "
+        f"{sum(v for k, v in counts.items() if k in ('Calculated', 'Calculated (assumed inputs)', 'Provisional'))} quantified, "
+        f"{counts.get('Needs input', 0)} need input."
     )
-
-    with st.expander("Wastage / allowance factors", expanded=False):
-        st.session_state["wastage_factors"] = render_wastage_editor(st.session_state["wastage_factors"])
-
-    with st.expander("Material & labour rates", expanded=False):
-        st.caption(config.RATE_BOOK_NOTE)
-        st.session_state["rate_book"] = render_rate_editor(
-            st.session_state["rate_book"],
-            unit_system=pi.unit_system,
-            currency_symbol=config.DEFAULT_CURRENCY_SYMBOL,
+    name = (pi.project_name or "Project").replace(" ", "_")
+    e1, e2 = st.columns(2)
+    with e1:
+        st.download_button(
+            "\U0001f4e6 Download Material Take-Off (Excel)", data=mto_views.export_bytes(res),
+            file_name=f"{name}_Material_TakeOff.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", width="stretch", type="primary",
         )
-
-    pc1, pc2 = st.columns(2)
-    with pc1:
-        preliminaries_pct = st.slider(
-            "Preliminaries & site overheads %", 0.0, 20.0, float(st.session_state["preliminaries_pct"]), 0.5,
-            help="Lump-sum % of the subtotal of all priced items (site setup, supervision, water/power for works, transport).",
-        )
-        st.session_state["preliminaries_pct"] = preliminaries_pct
-    with pc2:
-        contingency_pct = st.slider("Contingency % (final)", 0.0, 20.0, pi.contingency_pct, 0.5)
-    pi.contingency_pct = contingency_pct
-    st.session_state["project_inputs"] = pi
-
-    # The BOQ is recalculated on every run (it is pure, fast arithmetic),
-    # so edits to rates / wastage / percentages can never leave a stale
-    # BOQ or stale exports on screen.
-    boq_items, cost_summary = generate_boq(
-        mto_items=st.session_state["mto_items"],
-        rate_book=st.session_state["rate_book"],
-        wastage=st.session_state["wastage_factors"],
-        project_inputs=pi,
-        preliminaries_pct=preliminaries_pct,
+    with e2:
+        st.download_button("\U0001f4c4 Download material schedule (CSV)", data=mto_views.schedule_csv(res),
+                           file_name=f"{name}_Material_Schedule.csv", mime="text/csv", width="stretch")
+    st.markdown(
+        "The Excel workbook contains: **Summary** (key quantities, lines by status), **Material_Schedule** (every material "
+        "with net qty, wastage, qty incl. wastage, purchase units, status, confidence, stage and calculation), "
+        "**Procurement_by_Stage**, **BOQ_Work_Items** (measured quantities), **Material_Breakdown** (work item \u00d7 "
+        "coefficient for every material), **Project_Inputs** (every input with its source), **Rooms**, **Openings**, "
+        "**Assumptions_Gaps** and **Benchmarks**."
     )
-    st.session_state["boq_items"] = boq_items
-    st.session_state["cost_summary"] = cost_summary
-    st.caption("The BOQ and exports update automatically whenever you change rates, wastage, or percentages.")
-
-    if st.session_state.get("boq_items"):
-        boq_items = st.session_state["boq_items"]
-        cost_summary = st.session_state["cost_summary"]
-
-        if units.is_fps(pi.unit_system):
-            st.caption("Unit system: FPS - quantities in cft/sqft/Nos/kg and rates per cft/sqft/Nos/kg. Amounts and totals are identical to the SI view.")
-
-        df = boq_to_dataframe(boq_items, unit_system=pi.unit_system)
-        st.dataframe(df, width="stretch", hide_index=True)
-
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Subtotal", f"{config.DEFAULT_CURRENCY_SYMBOL}{cost_summary.subtotal:,.0f}")
-        m2.metric(f"Contingency ({cost_summary.contingency_pct:.1f}%)", f"{config.DEFAULT_CURRENCY_SYMBOL}{cost_summary.contingency_amount:,.0f}")
-        m3.metric("Grand Total", f"{config.DEFAULT_CURRENCY_SYMBOL}{cost_summary.grand_total:,.0f}")
-
-        st.markdown("##### Cost by category")
-        cat_df = cost_by_category(boq_items)
-        if not cat_df.empty:
-            st.bar_chart(cat_df.set_index("Category"))
-
-        st.markdown("##### Export")
-        excel_bytes, pdf_bytes = _cached_exports(pi, boq_items, cost_summary, preliminaries_pct)
-        e1, e2 = st.columns(2)
-        with e1:
-            st.download_button(
-                "\U0001f4c5 Download Excel (MTO + BOQ)",
-                data=excel_bytes,
-                file_name=f"{pi.project_name.replace(' ', '_')}_MTO_BOQ.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                width="stretch",
-            )
-        with e2:
-            st.download_button(
-                "\U0001f4c4 Download PDF Report",
-                data=pdf_bytes,
-                file_name=f"{pi.project_name.replace(' ', '_')}_Estimate_Report.pdf",
-                mime="application/pdf",
-                width="stretch",
-            )
-
-        st.caption(f"\u26a0\ufe0f {config.DISCLAIMER_TEXT_SHORT}")
-
-        # Detailed material schedule driven by the Master Material Database
-        # (additive panel - it only reads session state; see ui/detailed_mto_panel.py).
-        try:
-            from ui.detailed_mto_panel import render_detailed_mto_panel
-            st.divider()
-            render_detailed_mto_panel()
-        except Exception as exc:  # the standard exports above must never be affected
-            st.caption(f"Detailed material schedule unavailable: {exc}")
-
-    if st.button("\u2190 Back to Step 4 (MTO)"):
-        go_to_step(4)
-        st.rerun()
+    st.caption("Costs are intentionally excluded - pricing will be added as a separate step. "
+               f"\u26a0\ufe0f {config.DISCLAIMER_TEXT_SHORT}")
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("\u2190 Back to Step 4 (Material Take-Off)"):
+            go_to_step(4)
+            st.rerun()
+    with c2:
+        if st.button("\U0001f504 Start a new project", width="stretch"):
+            reset_project()
+            st.rerun()
 
 
 # ---------------------------------------------------------------------------

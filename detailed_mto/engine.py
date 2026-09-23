@@ -56,7 +56,9 @@ REFERENCE_LINES = {
     "MSC-004": "EW-004 (anti-termite chemical)", "DWG-004": "DWG-002 (door shutter area)",
     "DWG-005": "DWG-002 (door shutter area)", "DWG-017": "DWG-002 (door shutter area)",
 }
-FORCE_OPTION = {"HVC-012"}  # recommended upgrades that duplicate the selected roof system unless activated
+FORCE_OPTION = {"HVC-012"}
+STRUCTURAL_RCC_WIS = {"WI-CN-03", "WI-CN-04", "WI-CN-05", "WI-CN-06", "WI-CN-07", "WI-CN-08"}
+_MIX_COL = {"cement": "J", "sand": "K", "agg": "L", "water": "P"}  # recommended upgrades that duplicate the selected roof system unless activated
 INCLUDED_STATUSES = {ST_CALC, ST_CALC_ASSUMED, ST_PROVISIONAL}
 
 
@@ -194,7 +196,16 @@ def compute(project: DetailedProject, kb: KnowledgeBase, scope: Optional[str] = 
         if w is None or not w.selected or w.qty == 0:
             continue
         wi = kb.work_items[r.wi_id]
-        c = Contribution(r.wi_id, wi.description, w.qty, wi.unit, r.mat_id, r.coefficient, r.coeff_id, r.mix_ref, w.qty * r.coefficient)
+        coef, mix_ref = r.coefficient, r.mix_ref
+        new_mix = p.options.rcc_mix
+        if (r.wi_id in STRUCTURAL_RCC_WIS and r.mix_ref == "MX_RCC124" and new_mix and new_mix != "MX_RCC124"
+                and new_mix in kb.mixes and r.mix_component in _MIX_COL):
+            col = _MIX_COL[r.mix_component]
+            old_v = kb.mixes["MX_RCC124"].values.get(col, 0.0)
+            if old_v:
+                coef = coef / old_v * kb.mixes[new_mix].values.get(col, 0.0)
+                mix_ref = new_mix
+        c = Contribution(r.wi_id, wi.description, w.qty, wi.unit, r.mat_id, coef, r.coeff_id, mix_ref, w.qty * coef)
         contributions.append(c)
         per_mat.setdefault(r.mat_id, []).append(c)
 

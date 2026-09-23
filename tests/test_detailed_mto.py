@@ -181,3 +181,51 @@ def test_sample_package_end_to_end(pi):
     assert sum(v for k, v in counts.items() if k in INCLUDED_STATUSES) > 150
     assert counts.get(ST_NEEDS_INPUT, 0) < 20
     assert len(xlsx) > 10000
+
+
+# ------------------------------------------------------------------ v0.5 refinements
+def test_rcc_mix_option_changes_structural_cement_only(pi):
+    params = _params(pi)
+    a, _ = run_detailed_mto(pi, params, options=Options(rcc_mix="MX_RCC124"))
+    b, _ = run_detailed_mto(pi, params, options=Options(rcc_mix="MX_RCC1153"))
+    slab_a = [c for c in a.contributions if c.wi_id == "WI-CN-07" and c.mat_id == "CON-001"][0]
+    slab_b = [c for c in b.contributions if c.wi_id == "WI-CN-07" and c.mat_id == "CON-001"][0]
+    assert slab_b.coefficient > slab_a.coefficient * 1.2  # 1:1.5:3 is richer
+    tank_a = [c for c in a.contributions if c.wi_id == "WI-CN-11" and c.mat_id == "CON-001"][0]
+    tank_b = [c for c in b.contributions if c.wi_id == "WI-CN-11" and c.mat_id == "CON-001"][0]
+    assert tank_a.coefficient == pytest.approx(tank_b.coefficient)  # tanks keep their drawing mix
+
+
+def test_rooms_override_drives_derived_counts(kb, pi):
+    from detailed_mto.model import Room
+    rooms = [Room("ground", "BATH 1", "Bathroom", 8, 5), Room("ground", "BATH 2", "Bathroom", 8, 5),
+             Room("ground", "BATH 3", "Bathroom", 8, 5), Room("ground", "KITCHEN", "Kitchen", 10, 9),
+             Room("ground", "BED", "Bedroom", 12, 12)]
+    p = build_project(pi, _params(pi), kb, rooms_override=rooms)
+    assert p.v("N_BATH") == 3 and p.v("N_WC") == 3 and p.v("N_KSINK") == 1
+    assert len(p.rooms) == 5
+
+
+def test_export_has_no_cost_columns(pi):
+    _, xlsx = run_detailed_mto(pi, _params(pi))
+    wb = load_workbook(BytesIO(xlsx))
+    headers = [c.value for c in wb["Material_Schedule"][1]]
+    assert not any("Rate" in (h or "") or "Amount" in (h or "") for h in headers)
+
+
+def test_row_conversions_roundtrip(kb, pi):
+    from detailed_mto.edits import mark_user_edits, rooms_to_rows, rows_to_rooms
+    p = build_project(pi, _params(pi), kb)
+    rows = rooms_to_rows(p)
+    assert len(rows_to_rooms(rows)) == len([r for r in p.rooms if r.area > 0])
+    changed = [dict(r) for r in rows]
+    changed[0]["Length (ft)"] = changed[0]["Length (ft)"] + 2
+    marked = mark_user_edits(changed, rows, ["Floor", "Room", "Room type", "Length (ft)", "Width (ft)"])
+    assert marked[0]["Confidence"] == "User" and marked[1]["Confidence"] == rows[1]["Confidence"]
+
+
+def test_benchmarks_depend_on_structural_system(kb, pi):
+    from detailed_mto.export import benchmarks_for
+    p = build_project(pi, _params(pi), kb)
+    steel = [b for b in benchmarks_for(p) if b[2] == "kg/sft"][0]
+    assert ("RCC frame" in steel[0]) == (p.v("FDN_STRIP") < 0.5)

@@ -63,7 +63,10 @@ def classify_room(name: str, kind: str, kb: KnowledgeBase) -> str:
 
 
 def build_project(project_inputs, params, kb: KnowledgeBase, facts=None, files: Optional[list] = None,
-                  scan: Optional[ScanResult] = None, options: Optional[Options] = None) -> DetailedProject:
+                  scan: Optional[ScanResult] = None, options: Optional[Options] = None,
+                  rooms_override: Optional[list] = None, openings_override: Optional[list] = None) -> DetailedProject:
+    """rooms_override / openings_override: user-reviewed lists of Room / OpeningGroup that replace the
+    drawing-derived ones BEFORE counts that depend on them (baths, kitchens, points ...) are derived."""
     pi = project_inputs
     p = DetailedProject(project_name=getattr(pi, "project_name", "") or "Untitled Project",
                         client=getattr(pi, "client_name", ""), location=getattr(pi, "location", ""))
@@ -163,14 +166,17 @@ def build_project(project_inputs, params, kb: KnowledgeBase, facts=None, files: 
           ASSUMED, "Reduce if side/rear walls are party walls; 1.0 = all four sides exposed.")
 
     # ----------------------------------------------------------------- rooms
-    if fx is not None:
+    n_ter, n_bal = scan.get("TERRACE"), scan.get("BALCONY")
+    if rooms_override is not None:
+        p.rooms = list(rooms_override)
+    if rooms_override is None and fx is not None:
         for k, ff in fx.floors.items():
             if k == "roof":
                 continue
             for r in ff.rooms:
                 name, L, W, kind = r[0], r[1], r[2], r[3]
                 p.rooms.append(Room(k, name, classify_room(name, kind, kb), L, W, ff.source, HIGH))
-    if not p.rooms:
+    if not p.rooms and rooms_override is None:
         baths = int(_est(params.services.bathroom_count_total, 2))
         kits = int(_est(params.services.kitchen_count_total, 1))
         for i, fl in enumerate(p.storeys):
@@ -187,20 +193,22 @@ def build_project(project_inputs, params, kb: KnowledgeBase, facts=None, files: 
                 p.rooms.append(Room(fl.key, f"ROOM {j + 1}", "Bedroom" if j else "Lounge / TV lounge", side, side, "Assumed", ASSUMED))
         p.assumptions.append("Room list not readable from drawings - generic rooms were generated from covered area and bath/kitchen counts.")
     mt = p.mumty
-    if mt is not None:
+    if mt is not None and rooms_override is None:
         side = math.sqrt(mt.covered_sft * 0.8)
         p.rooms.append(Room("roof", "MUMTY", "Mumty", side, side, mt.source, mt.confidence))
     # terraces / balconies (labels without dimensions)
-    n_ter, n_bal = scan.get("TERRACE"), scan.get("BALCONY")
-    for i in range(n_ter):
-        p.rooms.append(Room("first", f"TERRACE {i + 1}", "Terrace / balcony", 10, 6, "Label only - size assumed", ASSUMED))
-    for i in range(n_bal):
-        p.rooms.append(Room("first", f"BALCONY {i + 1}", "Terrace / balcony", 8, 3.5, "Label only - size assumed", ASSUMED))
-    if n_ter or n_bal:
+    if rooms_override is None:
+        for i in range(n_ter):
+            p.rooms.append(Room("first", f"TERRACE {i + 1}", "Terrace / balcony", 10, 6, "Label only - size assumed", ASSUMED))
+        for i in range(n_bal):
+            p.rooms.append(Room("first", f"BALCONY {i + 1}", "Terrace / balcony", 8, 3.5, "Label only - size assumed", ASSUMED))
+    if (n_ter or n_bal) and rooms_override is None:
         p.assumptions.append(f"{n_ter} terrace(s) and {n_bal} balcony(ies) are labelled but not dimensioned - sizes assumed (10'x6', 8'x3'-6\").")
 
     # -------------------------------------------------------------- openings
-    if scan.doors:
+    if openings_override is not None:
+        p.openings = list(openings_override)
+    elif scan.doors:
         for d in scan.doors:
             u = d.name.upper()
             ext = "MAIN" in u or "MUMTY" in u
@@ -217,7 +225,7 @@ def build_project(project_inputs, params, kb: KnowledgeBase, facts=None, files: 
         p.openings.append(OpeningGroup("door", "Room doors", 3.5, 7, rest, 1, 5, False,
                                        dt[1] if dt else "Step 3 door count", MEDIUM if dt else LOW))
         p.assumptions.append("Door sizes by type assumed (main 4'-6\"x8', room 3'-6\"x7', bath 2'-6\"x7'); totals from drawings/Step 3.")
-    for fl in p.storeys + ([p.mumty] if p.mumty else []):
+    for fl in (p.storeys + ([p.mumty] if p.mumty else [])) if openings_override is None else []:
         wk = fact("openings", f"windows_{fl.key}")
         n_w = int(wk[0]) if wk else int(_est(params.openings.window_count_per_floor, 4)) if not fl.is_mumty else 1
         n_b = len([r for r in p.rooms_on(fl.key) if r.room_type == "Bathroom"])
@@ -228,8 +236,9 @@ def build_project(project_inputs, params, kb: KnowledgeBase, facts=None, files: 
         if n_b:
             p.openings.append(OpeningGroup("ventilator", f"Bath ventilators - {fl.name}", 2.0, 1.5, n_b, 1, 0, True,
                                            "One per bathroom (sill 6 ft)", ASSUMED))
-    p.assumptions.append("Window WIDTHS are not given on the sample-style D&W sheets - 4'x5' windows and 2'x1'-6\" bath "
-                         "ventilators are assumed. Enter the real sizes in the Openings table when known.")
+    if openings_override is None or any(o.confidence == ASSUMED and o.kind != "door" for o in p.openings):
+        p.assumptions.append("Window WIDTHS are not given on the sample-style D&W sheets - 4'x5' windows and 2'x1'-6\" bath "
+                             "ventilators are assumed. Enter the real sizes in the Doors & windows table when known.")
 
     # ------------------------------------------------------------ foundation
     strip = fact("foundation", "strip") or (getattr(params.footings, "footing_type", "") == "strip")

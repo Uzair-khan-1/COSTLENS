@@ -1,10 +1,37 @@
-# CostLens — *From plans to price.* (MVP)
+# CostLens — *From plans to materials.* (v0.5.0)
 
-An AI-assisted, engineer-controlled tool that turns one or more simple
-residential RCC drawings (PDF/PNG/JPG - e.g. separate Plan, Elevation, and
-Section files) plus a few project inputs into a **preliminary** Material
-Take-Off (MTO), Bill of Quantities (BOQ), and cost estimate — exportable to
-Excel and PDF.
+A drawing-based **Material Take-Off (MTO)** tool for 5-10 marla houses in
+Pakistan. Upload the complete drawing set (CAD-exported PDFs work best); the
+app reads rooms, walls, levels, foundations, schedules and service labels
+directly from the drawings, lets you review them, and quantifies **every
+material in the Master Material Database** (309 materials, 101 work items)
+with status, confidence, construction stage and full traceability — exported
+to Excel.
+
+**Costs are intentionally excluded in v0.5.0.** Pricing will be added as a
+separate step once the quantities are right (the legacy cost modules in
+`mto_boq/` and `export/` are kept, unused by the UI, for that step).
+
+### Workflow
+
+1. **Project Setup** — plot, units, project details, and the *take-off
+   specification* (scope incl. Grey Structure / Finishing packages, finish
+   tier, structural RCC mix, roof treatment, walling, gas supply, false
+   ceilings, rainwater recharge well, seismic bands, optional items). Upload
+   the drawing set.
+2. **Drawing Analysis** — free CAD text/vector reading of every sheet + a label
+   scan (floor traps, manholes, WCs, vanities, showers, roof outlets, door /
+   chogath schedule, tanks). The AI is optional.
+3. **Review Data** — tabs for Rooms, Doors & windows, Counts & dimensions,
+   Structure and Coefficients. Everything shows where it came from
+   (drawing / derived / default / your edit).
+4. **Material Take-Off** — material schedule (filter by category / status),
+   by construction stage, work-item quantities, traceability per material,
+   assumptions & gaps, benchmark checks.
+5. **Export** — Excel workbook (10 sheets) and CSV.
+
+See **[DETAILED_MTO.md](DETAILED_MTO.md)** for the engine, knowledge base and
+accuracy notes.
 
 > ⚠️ **Disclaimer**: This tool produces **preliminary, indicative**
 > quantities and costs for early-stage budgeting only. It is **not** a
@@ -508,18 +535,25 @@ in-app and are fully editable before the BOQ is generated.
 
 ---
 
-## 7b. Detailed Material Schedule (v0.5.0)
+## 7b. Material take-off engine (v0.5.0)
 
-Step 5 now has a second export: a **complete material-by-material schedule**
-driven by the Master Material Database (`data/master_material_database.xlsx`,
-309 materials, 101 work items, 308 recipe lines). Every material is listed with
-a status, confidence, calculation trace, construction stage and purchase units;
-rates are left blank for pricing. See **[DETAILED_MTO.md](DETAILED_MTO.md)**.
-The existing MTO/BOQ Excel and PDF exports are unchanged.
+Steps 3-5 are driven by the Master Material Database
+(`data/master_material_database.xlsx`, 309 materials, 101 work items, 308 recipe
+lines). See **[DETAILED_MTO.md](DETAILED_MTO.md)**.
 
 ---
 
 ## 8. Changelog
+
+**v0.5.0 — drawing-based material take-off**
+- The wizard is rebuilt around the Master Material Database: Step 3 reviews
+  rooms, doors & windows, counts and structure; Step 4 is the full material
+  take-off; Step 5 exports it. Costs removed from the UI for now.
+- New label scan reads plumbing labels, the door/chogath schedule and tank
+  sizes; rooms/openings edited in Step 3 drive all derived counts.
+- Take-off specification in Step 1 (scope packages, finish tier, RCC mix,
+  roof system, walling, gas, false ceilings, recharge well, seismic bands).
+- Excel export without cost columns; CSV export; structure-aware benchmarks.
 
 **v0.4.0**
 - Fixed: footing thickness and founding depth were one field. Footing

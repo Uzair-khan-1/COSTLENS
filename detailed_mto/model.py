@@ -109,6 +109,7 @@ class Options:
     include_rwh: bool = True
     include_options: bool = False  # also quantify Optional/Premium/Alternative materials
     seismic_bands: bool = True
+    rcc_mix: str = "MX_RCC124"  # structural RCC nominal mix: MX_RCC124 (1:2:4, drawing spec) | MX_RCC1153 (1:1.5:3)
 
 
 @dataclass
