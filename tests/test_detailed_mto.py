@@ -1,0 +1,183 @@
+"""Tests for the Master-Database-driven Detailed MTO (knowledge/ + detailed_mto/)."""
+from __future__ import annotations
+
+import os
+from io import BytesIO
+
+import pymupdf
+import pytest
+from openpyxl import load_workbook
+
+from ai.extraction import default_building_params
+from detailed_mto import Options, build_project, compute, run_detailed_mto, scan_pdf_bytes
+from detailed_mto.edits import apply_openings, openings_to_rows
+from detailed_mto.engine import INCLUDED_STATUSES, ST_NEEDS_INPUT, ST_OPTION, ST_SCOPE
+from engineering import plot_templates
+from knowledge import load_knowledge_base
+from models.schemas import ProjectInputs
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SAMPLE = os.path.join(ROOT, "sample_data", "sample_5_marla_package.pdf")
+
+
+@pytest.fixture(scope="module")
+def kb():
+    return load_knowledge_base()
+
+
+def _params(pi):
+    return plot_templates.build_template_params(pi) or default_building_params(
+        wall_thickness_mm=pi.wall_thickness_mm, wall_material=pi.wall_material, unit_system=pi.unit_system)
+
+
+@pytest.fixture(scope="module")
+def pi():
+    return ProjectInputs(project_name="Test 5 Marla", plot_marla=5)
+
+
+# ------------------------------------------------------------------ knowledge base
+def test_kb_loads_with_integrity(kb):
+    assert len(kb.materials) >= 300
+    assert len(kb.work_items) >= 100
+    assert len(kb.recipes) >= 300
+    for r in kb.recipes:
+        assert r.mat_id in kb.materials and r.wi_id in kb.work_items
+
+
+def test_kb_formulas_evaluated_in_python(kb):
+    # bricks per cft from actual brick size 8.75x4.25x2.75 + 3/8 joint
+    assert kb.k("K_BRK_PER_CFT") == pytest.approx(13.10, abs=0.01)
+    # RCC 1:2:4 nominal mix: ~0.179 bags/cft, ~6.34 bags/m3
+    assert kb.mixes["MX_RCC124"].values["J"] == pytest.approx(0.1794, abs=1e-3)
+    assert kb.mixes["MX_RCC124"].values["M"] == pytest.approx(6.336, abs=0.01)
+    assert kb.mixes["MX_PCC148"].values["J"] == pytest.approx(0.0966, abs=1e-3)
+    # recipe coefficient that multiplies a coefficient by a mix cell
+    cem = [r for r in kb.recipes if r.wi_id == "WI-CN-07" and r.mat_id == "CON-001"][0]
+    assert cem.coefficient == pytest.approx(0.1794, abs=1e-3)
+
+
+# ------------------------------------------------------------------ engine
+def test_every_material_is_listed_with_a_status(kb, pi):
+    params = _params(pi)
+    result, xlsx = run_detailed_mto(pi, params)
+    assert len(result.materials) == len(kb.materials)
+    assert all(m.status for m in result.materials)
+    ids = [m.material.mat_id for m in result.materials]
+    assert ids == list(kb.materials.keys())
+    for w in result.work_items:
+        assert "error" not in w.calculation.lower(), (w.wi_id, w.calculation)
+    wb = load_workbook(BytesIO(xlsx))
+    assert wb.sheetnames[:2] == ["Summary", "Material_Schedule"]
+    assert wb["Material_Schedule"].max_row >= len(kb.materials) + 1
+
+
+def test_core_quantities_are_positive_and_consistent(pi):
+    result, _ = run_detailed_mto(pi, _params(pi))
+    for mid in ("CON-001", "CON-004", "CON-006", "RBR-002", "MAS-001", "FLR-001", "PNT-003", "ELE-006", "PWS-001", "PDR-001"):
+        m = result.by_id(mid)
+        assert m.included and m.gross_qty > 0, mid
+        assert m.gross_qty == pytest.approx(m.net_qty * (1 + m.wastage_pct))
+    # cement = sum of its recipe contributions (before wastage)
+    cem = result.by_id("CON-001")
+    contrib = sum(c.net_qty for c in result.contributions if c.mat_id == "CON-001")
+    assert cem.net_qty == pytest.approx(contrib)
+
+
+def test_scope_filter(pi):
+    result, _ = run_detailed_mto(pi, _params(pi), options=Options(scope="Electrical"))
+    assert result.by_id("RBR-002").status == ST_SCOPE
+    assert result.by_id("ELE-006").status in INCLUDED_STATUSES
+
+
+def test_options_switch_alternatives(pi):
+    base, _ = run_detailed_mto(pi, _params(pi), options=Options(roof_system="Traditional"))
+    ins, _ = run_detailed_mto(pi, _params(pi), options=Options(roof_system="Insulated"))
+    assert base.by_id("WPF-008").status == ST_OPTION  # insulation board not in traditional roof
+    assert ins.by_id("WPF-008").included
+    assert not ins.by_id("WPF-009").included  # earth fill only in traditional roof
+
+
+def test_user_override_changes_quantities(kb, pi):
+    params = _params(pi)
+    r1, _ = run_detailed_mto(pi, params)
+    r2, _ = run_detailed_mto(pi, params, overrides={"N_WC": 6})
+    assert r2.by_id("SAN-001").gross_qty == 6
+    assert r1.by_id("SAN-001").gross_qty != 6
+
+
+def test_opening_edits(kb, pi):
+    p = build_project(pi, _params(pi), kb)
+    rows = openings_to_rows(p)
+    before = sum(o.area_total for o in p.windows())
+    for r in rows:
+        if r["Kind"] == "window":
+            r["Width (ft)"] = r["Width (ft)"] + 1
+    apply_openings(p, rows, openings_to_rows(build_project(pi, _params(pi), kb)))
+    assert sum(o.area_total for o in p.windows()) > before
+    assert any(o.confidence == "User" for o in p.windows())
+    res = compute(p, kb)
+    assert res.by_id("DWG-009").gross_qty > 0
+
+
+def test_existing_app_objects_not_mutated(pi):
+    params = _params(pi)
+    before = params.model_dump_json()
+    pi_before = pi.model_dump_json()
+    run_detailed_mto(pi, params, overrides={"H_FLOOR": 13})
+    assert params.model_dump_json() == before
+    assert pi.model_dump_json() == pi_before
+
+
+# ------------------------------------------------------------------ scanner
+def _synthetic_pdf() -> bytes:
+    doc = pymupdf.open()
+    pg = doc.new_page()
+    y = 60
+    for t in ["GROUND FLOOR PLAN", "PLUMBING WORK DETAILS", "F.T", "F.T", "F.T", "M.H", "VANITY", "CONCEALED WC", "wc",
+              "SHOWER AREA", "SEPTIC TANK", "8'x4'"]:
+        pg.insert_text((50, y), t, fontsize=9)
+        y += 14
+    pg2 = doc.new_page()
+    pg2.insert_text((60, 60), "FULL HOUSE CHOGATTH", fontsize=9)
+    pg2.insert_text((60, 100), "3'-6\" X 7'-0\"", fontsize=9)
+    pg2.insert_text((200, 100), "SINGLE", fontsize=9)
+    pg2.insert_text((300, 100), "6", fontsize=9)
+    pg2.insert_text((360, 100), "ROOM DOOR", fontsize=9)
+    pg2.insert_text((60, 130), "4'-6\" X 8'-0\"   10\"", fontsize=9)
+    pg2.insert_text((200, 130), "DOUBLE", fontsize=9)
+    pg2.insert_text((300, 130), "1", fontsize=9)
+    pg2.insert_text((360, 130), "MAIN DOOR", fontsize=9)
+    pg3 = doc.new_page()
+    pg3.insert_text((60, 60), "MUMTY PLAN", fontsize=9)
+    pg3.insert_text((60, 80), "PLUMBING WORK DETAILS", fontsize=9)
+    pg3.insert_text((60, 100), "600 GAL. FG WATER TANK", fontsize=9)
+    return doc.tobytes()
+
+
+def test_scanner_reads_labels_and_door_schedule():
+    res = scan_pdf_bytes([{"name": "synthetic.pdf", "bytes": _synthetic_pdf()}])
+    assert res.get("FT") == 3
+    assert res.get("MH") == 1
+    assert res.get("WC") == 1  # 'CONCEALED WC' + 'wc' tag on one fixture counts once
+    assert res.oh_tank_gal == 600
+    doors = {d.name: d for d in res.doors}
+    assert doors["Room Door"].qty == 6 and doors["Room Door"].width_ft == 3.5
+    assert doors["Main Door"].leaves == 2 and doors["Main Door"].chogath_in == 10
+
+
+def test_scanner_never_raises_on_bad_input():
+    res = scan_pdf_bytes([{"name": "x.pdf", "bytes": b"not a pdf"}, {"name": "img.png", "bytes": b"123"}])
+    assert res.label_counts == {}
+
+
+@pytest.mark.skipif(not os.path.exists(SAMPLE), reason="sample package not present")
+def test_sample_package_end_to_end(pi):
+    from drawing_processing.package_analyzer import analyze_package, apply_package_facts
+    files = [{"name": "sample_5_marla_package.pdf", "bytes": open(SAMPLE, "rb").read(), "view_tag": "Auto"}]
+    facts = analyze_package(files, None, "FPS")
+    params, _, _ = apply_package_facts(_params(pi), facts, pi)
+    result, xlsx = run_detailed_mto(pi, params, facts=facts, files=files)
+    counts = result.status_counts()
+    assert sum(v for k, v in counts.items() if k in INCLUDED_STATUSES) > 150
+    assert counts.get(ST_NEEDS_INPUT, 0) < 20
+    assert len(xlsx) > 10000

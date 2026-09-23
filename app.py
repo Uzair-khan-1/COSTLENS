@@ -1040,6 +1040,15 @@ def step_5():
 
         st.caption(f"\u26a0\ufe0f {config.DISCLAIMER_TEXT_SHORT}")
 
+        # Detailed material schedule driven by the Master Material Database
+        # (additive panel - it only reads session state; see ui/detailed_mto_panel.py).
+        try:
+            from ui.detailed_mto_panel import render_detailed_mto_panel
+            st.divider()
+            render_detailed_mto_panel()
+        except Exception as exc:  # the standard exports above must never be affected
+            st.caption(f"Detailed material schedule unavailable: {exc}")
+
     if st.button("\u2190 Back to Step 4 (MTO)"):
         go_to_step(4)
         st.rerun()

@@ -508,6 +508,17 @@ in-app and are fully editable before the BOQ is generated.
 
 ---
 
+## 7b. Detailed Material Schedule (v0.5.0)
+
+Step 5 now has a second export: a **complete material-by-material schedule**
+driven by the Master Material Database (`data/master_material_database.xlsx`,
+309 materials, 101 work items, 308 recipe lines). Every material is listed with
+a status, confidence, calculation trace, construction stage and purchase units;
+rates are left blank for pricing. See **[DETAILED_MTO.md](DETAILED_MTO.md)**.
+The existing MTO/BOQ Excel and PDF exports are unchanged.
+
+---
+
 ## 8. Changelog
 
 **v0.4.0**
