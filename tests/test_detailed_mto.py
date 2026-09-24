@@ -250,7 +250,7 @@ def test_summary_has_shopping_list_with_every_purchased_material(pi):
     assert {m.material.mat_id for m in res.purchase_list()} <= codes
     texts = [c.value for c in ws["B"] if isinstance(c.value, str)]
     assert any("SHOPPING LIST" in t for t in texts)
-    assert ws["B6"].hyperlink is not None  # contents links
+    assert any(ws.cell(row=r, column=2).hyperlink is not None for r in range(5, 10))  # contents links
 
 
 def test_purchase_units(kb):
@@ -259,3 +259,72 @@ def test_purchase_units(kb):
     assert purchase_qty(kb.materials["RBR-002"], 3233.1) == (3.24, "ton")
     assert purchase_qty(kb.materials["ELE-006"], 825) == (10, "coils (90 m)")
     assert purchase_qty(kb.materials["MAS-001"], 83594.9)[0] == 83600
+
+
+# ------------------------------------------------------------------ v0.5.2 fixes
+def test_overrides_propagate_to_derived_values(kb, pi):
+    params = _params(pi)
+    p0 = build_project(pi, params, kb)
+    p1 = build_project(pi, params, kb, overrides={"H_FLOOR": p0.v("H_FLOOR") + 2, "PLOT_W": 60})
+    assert all(f.storey_height_ft == p1.v("H_FLOOR") for f in p1.storeys)
+    assert p1.v("H_TOTAL") > p0.v("H_TOTAL")
+    assert p1.v("SEWER_LEN") == 70
+    assert p1.params["H_FLOOR"].confidence == "User"
+    r0, r1 = compute(p0, kb), compute(p1, kb)
+    assert r1.by_id("MAS-001").gross_qty > r0.by_id("MAS-001").gross_qty  # taller walls -> more bricks
+    res, _ = run_detailed_mto(pi, params, overrides={"H_FLOOR": 13})
+    assert res.project.floors[0].storey_height_ft == 13
+
+
+def test_validation_flags_impossible_and_unusual_values(kb, pi):
+    from detailed_mto.validation import errors, validate_project
+    params = _params(pi)
+    assert not errors(validate_project(build_project(pi, params, kb)))
+    bad = build_project(pi, params, kb, overrides={"N_WC": -2, "H_FLOOR": 0, "T_SLAB_IN": 30})
+    keys = {i.key for i in errors(validate_project(bad))}
+    assert {"N_WC", "H_FLOOR", "T_SLAB_IN"} <= keys
+    odd = build_project(pi, params, kb, overrides={"ROOF_AREA": 9000})
+    sev = {i.key: i.severity for i in validate_project(odd)}
+    assert sev.get("ROOF_AREA") == "warning"
+
+
+def test_negative_inputs_never_create_negative_quantities(kb, pi):
+    res, _ = run_detailed_mto(pi, _params(pi), overrides={"N_WC": -5, "SEWER_LEN": -100})
+    assert all(m.gross_qty >= 0 for m in res.materials)
+
+
+def test_scanned_drawings_are_marked_assumed(kb, pi):
+    files = [{"name": "photo.png", "bytes": b"\x89PNG....", "view_tag": "Plan"}]
+    res, xlsx = run_detailed_mto(pi, _params(pi), files=files)
+    p = res.project
+    assert p.drawing_mode == "scanned"
+    assert all(prm.confidence == "Assumed" for prm in p.params.values())
+    assert res.status_counts().get("Calculated", 0) == 0  # nothing claims to come from the drawings
+    assert any("could not be read" in c or "scanned" in c for c in p.conflicts)
+    ws = load_workbook(BytesIO(xlsx))["Summary"]
+    assert "WARNING" in (ws["B4"].value or "")
+
+
+def test_no_drawings_mode(kb, pi):
+    res, _ = run_detailed_mto(pi, _params(pi))
+    assert res.project.drawing_mode == "none"
+    assert res.status_counts().get("Calculated", 0) == 0
+
+
+def test_unedited_rows_are_not_marked_as_user_edits(kb, pi):
+    import pandas as pd
+    from detailed_mto.edits import OPENING_COLS, ROOM_COLS, mark_user_edits, openings_to_rows, rooms_to_rows
+    p = build_project(pi, _params(pi), kb)
+    for rows, cols, keys in ((rooms_to_rows(p), ROOM_COLS, ["Floor", "Room", "Room type", "Length (ft)", "Width (ft)"]),
+                             (openings_to_rows(p), OPENING_COLS, ["Kind", "Name", "Width (ft)", "Height (ft)", "Qty", "Leaves", "External"])):
+        via_editor = pd.DataFrame(rows, columns=cols).to_dict("records")  # ints become floats, like st.data_editor
+        marked = mark_user_edits(via_editor, rows, keys)
+        assert not any(r["Confidence"] == "User" for r in marked)
+
+
+def test_editor_delta_applied_when_leaving_step_3():
+    from ui.mto_views import _apply_editor_delta
+    rows = [{"Room": "A", "Length (ft)": 10}, {"Room": "B", "Length (ft)": 12}, {"Room": "C", "Length (ft)": 8}]
+    delta = {"edited_rows": {0: {"Length (ft)": 11}}, "deleted_rows": [1], "added_rows": [{"Room": "D", "Length (ft)": 9}]}
+    out = _apply_editor_delta(rows, delta, ["Room", "Length (ft)"])
+    assert [r["Room"] for r in out] == ["A", "C", "D"] and out[0]["Length (ft)"] == 11

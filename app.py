@@ -111,6 +111,8 @@ with st.sidebar:
     _target = theme.render_step_nav(STEP_LABELS, st.session_state["step"], int(st.session_state.get("max_step", 1) or 1),
                                     _step_available)
     if _target is not None:
+        if st.session_state["step"] == 3:
+            mto_views.commit_review_from_widgets()  # keep unsaved room / door-window table edits
         go_to_step(_target)
         st.rerun()
 
@@ -506,10 +508,7 @@ def step_2():
             "These override AI and template values and are marked 'From drawings' in Step 3."
         )
     else:
-        st.info(
-            "No CAD text or vector data found (scanned drawings or photos). The AI will read the pages below; "
-            + ("the plot template fills anything it misses." if pi.plot_marla else "standard defaults fill anything it misses.")
-        )
+        mto_views.render_drawing_mode_banner("scanned")
     sheet_rows = [
         {"File": sh.file_name, "Page": sh.page_no, "Detected views": ", ".join(sh.views),
          "Read from drawing": " | ".join(sh.findings) if sh.findings else "-"}
@@ -567,8 +566,12 @@ def step_2():
 
     c1, c2 = st.columns(2)
     with c1:
-        skip_clicked = st.button("Continue with drawing data \u2192", type="primary", width="stretch",
-                                 help="Recommended for CAD PDFs: everything read from the drawings is used; defaults fill the rest.")
+        _readable = facts.has_facts()
+        skip_clicked = st.button(
+            "Continue with drawing data \u2192" if _readable else "Continue with typical-house values \u2192",
+            type="primary" if _readable else "secondary", width="stretch",
+            help="Recommended for CAD PDFs: everything read from the drawings is used; defaults fill the rest." if _readable
+            else "Nothing could be read from these drawings - Step 3 will start from a typical house that you must correct.")
     with c2:
         analyze_clicked = st.button("\U0001f9e0 Also ask the AI for missing values", width="stretch",
                                     help="Optional. Sends the most useful pages to the Groq vision model for values not read from the drawings.")
@@ -778,8 +781,9 @@ def step_3():
         with st.expander("\u26a0\ufe0f Extraction warnings", expanded=False):
             for w in params.extraction_warnings:
                 st.warning(w)
-    if params.overall_notes:
+    if params.overall_notes and st.session_state.get("used_ai"):
         st.info(f"**AI notes:** {params.overall_notes}")
+    mto_views.render_drawing_mode_banner()
     st.caption(mto_views.options_summary(st.session_state["dmto_options"]) + " (change in Step 1)")
 
     mto_views.seed_review_rows(pi, params)
@@ -803,13 +807,16 @@ def step_3():
     with t_coef:
         mto_views.render_coefficients()
 
+    dmto_errors = mto_views.render_validation(pi, params, room_rows, opening_rows)
     errors, warnings = validate_params(params, pi, st.session_state["assumptions"])
+    errors = list(errors) + [f"{i.label} {i.message}" for i in dmto_errors]
     if errors or warnings:
         with st.expander(f"Input checks ({len(errors)} error(s), {len(warnings)} warning(s))", expanded=bool(errors)):
             for e in errors:
                 st.error(e)
             for w in warnings:
                 st.warning(w)
+    st.caption("Table edits are kept when you press Apply, Calculate, Back or use the sidebar steps.")
 
     c1, c2, c3 = st.columns([1, 1, 2])
     with c1:
@@ -836,15 +843,19 @@ def step_3():
 def step_4():
     st.header("Step 4 \u00b7 Material Take-Off")
     pi: ProjectInputs = st.session_state["project_inputs"]
-    res = st.session_state.get("dmto_result")
+    if st.session_state.get("extracted_params") is None:
+        st.info("Complete Steps 1-3 first.")
+        if st.button("\u2190 Back to Step 1"):
+            go_to_step(1)
+            st.rerun()
+        return
+    res = mto_views.ensure_current_result(pi, st.session_state["extracted_params"])
     if res is None:
-        if st.session_state.get("extracted_params") is None:
-            st.info("Complete Steps 1-3 first.")
-            if st.button("\u2190 Back to Step 1"):
-                go_to_step(1)
-                st.rerun()
-            return
-        res = mto_views.run_takeoff(pi, st.session_state["extracted_params"])
+        if st.button("\u2190 Back to Step 3 to fix the inputs"):
+            go_to_step(3)
+            st.rerun()
+        return
+    mto_views.render_drawing_mode_banner(res.project.drawing_mode)
     st.caption(mto_views.options_summary(st.session_state["dmto_options"]) +
                " \u00b7 All quantities in Pakistani FPS units (cft, sft, rft, bags, kg, Nos). Costs are not included in this version.")
     mto_views.render_takeoff(res)
@@ -866,7 +877,9 @@ def step_4():
 def step_5():
     st.header("Step 5 \u00b7 Export")
     pi: ProjectInputs = st.session_state["project_inputs"]
-    res = st.session_state.get("dmto_result")
+    res = mto_views.ensure_current_result(pi, st.session_state.get("extracted_params"))
+    if res is not None:
+        mto_views.render_drawing_mode_banner(res.project.drawing_mode)
     if res is None:
         st.info("Calculate the material take-off first (Step 3).")
         if st.button("\u2190 Back to Step 3"):

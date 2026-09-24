@@ -233,8 +233,17 @@ def compute(project: DetailedProject, kb: KnowledgeBase, scope: Optional[str] = 
             continue
         try:
             wq[wid] = fn(p, kb, wq)
+            if wq[wid].qty < 0:  # impossible inputs must never create negative purchases
+                wq[wid] = _q.WIQty(0.0, ASSUMED, f"{wq[wid].calc}  -> negative result set to 0 (check inputs)", selected=wq[wid].selected)
         except Exception as exc:  # a single bad input must not kill the whole schedule
             wq[wid] = _q.WIQty(0.0, ASSUMED, f"Calculation error: {exc}", selected=False)
+
+    # When nothing was read from drawings (scans / no upload) no quantity may claim drawing-level confidence.
+    unread = getattr(p, "drawing_mode", "cad") != "cad"
+    if unread:
+        for w in wq.values():
+            if w.confidence != USER:
+                w.confidence = ASSUMED
 
     # 2) recipe contributions
     contributions: List[Contribution] = []
@@ -261,7 +270,7 @@ def compute(project: DetailedProject, kb: KnowledgeBase, scope: Optional[str] = 
     cem = sum(c.net_qty for c in per_mat.get("CON-001", []))
     cem_gross = cem * (1 + kb.materials["CON-001"].wastage_pct) if "CON-001" in kb.materials else cem
     water_gal = cem_gross * kb.k("K_WATER_L_BAG") / 4.546
-    wq["WI-PRE-02"] = _q.WIQty(water_gal, MEDIUM, f"{cem_gross:,.0f} cement bags x {kb.k('K_WATER_L_BAG'):g} L/bag / 4.546 L/gal")
+    wq["WI-PRE-02"] = _q.WIQty(water_gal, ASSUMED if unread else MEDIUM, f"{cem_gross:,.0f} cement bags x {kb.k('K_WATER_L_BAG'):g} L/bag / 4.546 L/gal")
     for c in list(contributions):
         if c.wi_id == "WI-PRE-02":
             contributions.remove(c)
@@ -315,6 +324,8 @@ def compute(project: DetailedProject, kb: KnowledgeBase, scope: Optional[str] = 
                 status = ST_NEEDS_INPUT
             else:
                 net, conf, calc = res
+                if unread and conf != USER:
+                    conf = ASSUMED
                 activated = _activated_direct(mid, p)
         if not material_in_scope(kb, mat, scope):
             status = ST_SCOPE

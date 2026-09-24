@@ -22,6 +22,7 @@ from detailed_mto.edits import (OPENING_COLS, ROOM_COLS, mark_user_edits, openin
 from detailed_mto.engine import (INCLUDED_STATUSES, ST_CALC, ST_CALC_ASSUMED, ST_NEEDS_INPUT, ST_OPTION, ST_PROVISIONAL,
                                  ST_REFERENCE, DetailedResult, purchase_qty)
 from detailed_mto.export import STAGE_NAMES, benchmarks_for
+from detailed_mto.validation import errors, validate_project
 from knowledge import load_knowledge_base
 
 FLOOR_KEYS = ["basement", "ground", "first", "second", "third", "roof"]
@@ -33,12 +34,26 @@ def kb():
 
 
 # ---------------------------------------------------------------- project building
+def drawing_mode() -> str:
+    facts = st.session_state.get("package_facts")
+    if facts is not None and facts.has_facts():
+        return "cad"
+    return "scanned" if st.session_state.get("uploaded_files") else "none"
+
+
+def _build(pi, params, room_rows=None, opening_rows=None, overrides=None):
+    return build_project(pi, params, kb(), facts=st.session_state.get("package_facts"), scan=st.session_state.get("dmto_scan"),
+                         options=st.session_state["dmto_options"],
+                         rooms_override=rows_to_rooms(room_rows) if room_rows is not None else None,
+                         openings_override=rows_to_openings(opening_rows) if opening_rows is not None else None,
+                         overrides=overrides, drawing_mode=drawing_mode())
+
+
 def seed_review_rows(pi, params) -> None:
     """First time Step 3 opens after an analysis: fill rooms/openings from the drawings."""
     if st.session_state.get("dmto_rooms") is not None and st.session_state.get("dmto_openings") is not None:
         return
-    p = build_project(pi, params, kb(), facts=st.session_state.get("package_facts"),
-                      scan=st.session_state.get("dmto_scan"), options=st.session_state["dmto_options"])
+    p = _build(pi, params)
     if st.session_state.get("dmto_rooms") is None:
         st.session_state["dmto_rooms"] = rooms_to_rows(p)
     if st.session_state.get("dmto_openings") is None:
@@ -48,22 +63,98 @@ def seed_review_rows(pi, params) -> None:
 def current_project(pi, params, room_rows=None, opening_rows=None, with_overrides=True):
     room_rows = st.session_state.get("dmto_rooms") if room_rows is None else room_rows
     opening_rows = st.session_state.get("dmto_openings") if opening_rows is None else opening_rows
-    p = build_project(pi, params, kb(), facts=st.session_state.get("package_facts"), scan=st.session_state.get("dmto_scan"),
-                      options=st.session_state["dmto_options"],
-                      rooms_override=rows_to_rooms(room_rows) if room_rows is not None else None,
-                      openings_override=rows_to_openings(opening_rows) if opening_rows is not None else None)
-    if with_overrides:
-        for k, v in (st.session_state.get("dmto_overrides") or {}).items():
-            p.override(k, v)
-    return p
+    return _build(pi, params, room_rows, opening_rows,
+                  overrides=(st.session_state.get("dmto_overrides") or {}) if with_overrides else None)
+
+
+def input_signature(pi, params) -> str:
+    """Fingerprint of everything the take-off depends on - used to detect out-of-date results."""
+    import hashlib
+    import json
+    h = hashlib.sha256()
+    for part in (pi.model_dump_json() if pi is not None else "", params.model_dump_json() if params is not None else "",
+                 json.dumps(st.session_state.get("dmto_rooms"), sort_keys=True, default=str),
+                 json.dumps(st.session_state.get("dmto_openings"), sort_keys=True, default=str),
+                 json.dumps(st.session_state.get("dmto_overrides") or {}, sort_keys=True, default=str),
+                 repr(st.session_state.get("dmto_options")), repr(st.session_state.get("uploaded_signature")),
+                 drawing_mode()):
+        h.update(part.encode())
+    return h.hexdigest()
 
 
 def run_takeoff(pi, params) -> DetailedResult:
     p = current_project(pi, params)
     res = compute(p, kb(), scope=st.session_state["dmto_options"].scope)
     st.session_state["dmto_result"] = res
+    st.session_state["dmto_result_sig"] = input_signature(pi, params)
     st.session_state["dmto_xlsx"] = None
     return res
+
+
+def ensure_current_result(pi, params) -> Optional[DetailedResult]:
+    """Return an up-to-date take-off: recalculates automatically when any input changed since the
+    last calculation (e.g. after jumping here from Step 3 via the sidebar), and says so."""
+    res = st.session_state.get("dmto_result")
+    if params is None:
+        return res
+    if res is None or st.session_state.get("dmto_result_sig") != input_signature(pi, params):
+        stale = res is not None
+        issues = validate_project(current_project(pi, params))
+        if errors(issues):
+            if stale:
+                st.error("Your inputs changed but contain errors, so the take-off below is NOT up to date. "
+                         "Fix these in Step 3: " + "; ".join(f"{i.label} {i.message}" for i in errors(issues)[:5]))
+            return res
+        with st.spinner("Inputs changed - recalculating the take-off..."):
+            res = run_takeoff(pi, params)
+        if stale:
+            st.info("\U0001f504 Your inputs changed since the last calculation - the take-off has been recalculated.")
+    return res
+
+
+def _apply_editor_delta(rows: List[dict], delta, columns: List[str]) -> List[dict]:
+    """Apply a st.data_editor widget-state delta (edited/added/deleted rows) to the rows it was built from."""
+    if not isinstance(delta, dict):
+        return rows
+    out = [dict(r) for r in rows]
+    for idx, changes in (delta.get("edited_rows") or {}).items():
+        i = int(idx)
+        if 0 <= i < len(out):
+            out[i].update(changes)
+    deleted = {int(i) for i in (delta.get("deleted_rows") or [])}
+    out = [r for i, r in enumerate(out) if i not in deleted]
+    for added in delta.get("added_rows") or []:
+        row = {c: None for c in columns}
+        row.update(added)
+        out.append(row)
+    return out
+
+
+def commit_review_from_widgets() -> None:
+    """Save Step 3 table edits that were not yet applied (used when leaving Step 3 via the sidebar)."""
+    ver = st.session_state.get("dmto_ver", 0)
+    rooms = st.session_state.get("dmto_rooms")
+    opens = st.session_state.get("dmto_openings")
+    rd = st.session_state.get(f"dmto_rooms_editor_{ver}")
+    od = st.session_state.get(f"dmto_open_editor_{ver}")
+    if rooms is None or opens is None or (not rd and not od):
+        return
+    save_review(_apply_editor_delta(rooms, rd, ROOM_COLS), _apply_editor_delta(opens, od, OPENING_COLS))
+
+
+def render_drawing_mode_banner(mode: Optional[str] = None) -> None:
+    mode = mode or drawing_mode()
+    if mode == "scanned":
+        st.error(
+            "\u26a0\ufe0f **Your drawings could not be read** - they are scanned images or photos, so no dimensions, "
+            "rooms or schedules were taken from them. The quantities are based on a **typical house for the chosen plot "
+            "size**, not on your drawings, and every line is marked as assumed. To get real quantities: use "
+            "**'Also ask the AI'** in Step 2 (needs a Groq key), or enter your rooms, doors/windows and key dimensions in "
+            "Step 3, or upload the CAD-exported PDF from the architect."
+        )
+    elif mode == "none":
+        st.warning("No drawings uploaded - quantities are based on a typical house for the chosen plot size. "
+                   "Enter your rooms, doors/windows and key dimensions in Step 3 for real quantities.")
 
 
 # ---------------------------------------------------------------- Step 2
@@ -135,40 +226,64 @@ def render_openings_editor() -> List[dict]:
 
 
 def render_counts_editor(pi, params, room_rows, opening_rows) -> None:
-    base = current_project(pi, params, room_rows, opening_rows, with_overrides=False)
     ov = dict(st.session_state.get("dmto_overrides") or {})
-    groups = sorted({p.group for p in base.params.values()})
+    base = current_project(pi, params, room_rows, opening_rows, with_overrides=False)  # drawing/default values
+    cur = _build(pi, params, room_rows, opening_rows, overrides=ov)  # values actually used (edits propagated)
+    groups = sorted({p.group for p in cur.params.values()})
     st.caption("Counts and dimensions used by the take-off. 🟢 read from drawings · 🟡 derived · ⚪ assumed default · "
-               "🔵 your edit. Change any value - it overrides the drawing/default value.")
+               "🔵 your edit. Change any value - it overrides the drawing/default value, and values derived from it "
+               "(e.g. wall heights from floor height) follow automatically.")
     sel = st.multiselect("Show groups", groups, default=groups, key="dmto_count_groups")
     rows = []
-    for prm in sorted(base.params.values(), key=lambda x: (x.group, x.key)):
+    for prm in sorted(cur.params.values(), key=lambda x: (x.group, x.key)):
         if prm.group not in sel:
             continue
-        val = ov.get(prm.key, prm.value)
-        conf = "User" if prm.key in ov else prm.confidence
-        rows.append({"Key": prm.key, "Group": prm.group, "Parameter": prm.label, "Value": round(float(val), 3),
-                     "Unit": prm.unit, "": CONF_ICON.get(conf, ""), "Source": "User input" if prm.key in ov else prm.source})
+        rows.append({"Key": prm.key, "Group": prm.group, "Parameter": prm.label, "Value": round(float(prm.value), 3),
+                     "Unit": prm.unit, "": CONF_ICON.get(prm.confidence, ""), "Source": prm.source})
     df = pd.DataFrame(rows)
-    edited = st.data_editor(df, key=f"dmto_counts_editor_{st.session_state['dmto_ver']}_{'-'.join(sel)}", hide_index=True,
+    edited = st.data_editor(df, key=f"dmto_counts_editor_{st.session_state.get('dmto_counts_ver', 0)}_{'-'.join(sel)}", hide_index=True,
                             width="stretch", disabled=["Key", "Group", "Parameter", "Unit", "", "Source"],
                             column_config={"Value": st.column_config.NumberColumn(format="%.2f")})
+    changed = False
     for (_, a), (_, b) in zip(df.iterrows(), edited.iterrows()):
         key = a["Key"]
         try:
             newv = float(b["Value"])
         except (TypeError, ValueError):
             continue
-        basev = base.params[key].value
-        if abs(newv - basev) > 1e-6:
+        if abs(newv - float(a["Value"])) <= 1e-6:
+            continue  # untouched in this run
+        basev = base.params[key].value if key in base.params else None
+        if basev is not None and abs(newv - basev) <= 1e-3:
+            ov.pop(key, None)  # set back to the drawing/default value
+        else:
             ov[key] = newv
-        elif key in ov and abs(newv - basev) <= 1e-6:
-            ov.pop(key, None)
-    st.session_state["dmto_overrides"] = ov
-    if ov and st.button("Reset all edited counts to drawing/default values", key="dmto_reset_ov"):
-        st.session_state["dmto_overrides"] = {}
-        st.session_state["dmto_ver"] += 1
+        changed = True
+    if changed:
+        st.session_state["dmto_overrides"] = ov
+        # rebuild only this table (own key counter) so derived values refresh; room/door edits are untouched
+        st.session_state["dmto_counts_ver"] = st.session_state.get("dmto_counts_ver", 0) + 1
         st.rerun()
+    if ov:
+        st.caption(f"{len(ov)} value(s) edited by you: " + ", ".join(sorted(ov)))
+        if st.button("Reset all edited counts to drawing/default values", key="dmto_reset_ov"):
+            st.session_state["dmto_overrides"] = {}
+            st.session_state["dmto_counts_ver"] = st.session_state.get("dmto_counts_ver", 0) + 1
+            st.rerun()
+
+
+def render_validation(pi, params, room_rows, opening_rows):
+    """Plausibility checks on everything the take-off will use; returns the list of blocking errors."""
+    issues = validate_project(_build(pi, params, room_rows, opening_rows, overrides=st.session_state.get("dmto_overrides") or {}))
+    errs = errors(issues)
+    warns = [i for i in issues if i.severity == "warning"]
+    if errs:
+        st.error("**Please fix before calculating:**\n\n" + "\n".join(f"- **{i.label}** {i.message}" for i in errs))
+    if warns:
+        with st.expander(f"\u26a0\ufe0f {len(warns)} unusual value(s) - please confirm", expanded=len(warns) <= 3):
+            for i in warns:
+                st.warning(f"**{i.label}** {i.message}")
+    return errs
 
 
 def save_review(room_rows, opening_rows) -> None:

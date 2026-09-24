@@ -98,8 +98,17 @@ def rows_to_openings(rows: Iterable[dict]) -> List[OpeningGroup]:
 
 def mark_user_edits(new_rows: List[dict], old_rows: List[dict], key_cols: List[str]) -> List[dict]:
     """Rows that differ from the previously saved rows (or are new) become Source='User input', Confidence='User'."""
+    def norm(v):
+        if isinstance(v, bool) or v is None:
+            return str(v)
+        try:
+            f = float(v)
+            return "nan" if f != f else f"{f:.3f}"  # 7, 7.0 and numpy 7.0 compare equal
+        except (TypeError, ValueError):
+            return str(v).strip()
+
     def sig(r):
-        return tuple(str(r.get(c)) for c in key_cols)
+        return tuple(norm(r.get(c)) for c in key_cols)
     old = {sig(r) for r in old_rows}
     out = []
     for r in new_rows:

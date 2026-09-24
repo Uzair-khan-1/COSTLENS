@@ -456,8 +456,20 @@ def _build_summary(ws, result: DetailedResult, mats: List[MaterialLine], sched_r
                                    f"Generated {datetime.now().strftime('%d %b %Y %H:%M')}   |   Quantities only - no costs"
             ).font = _font(italic=True, color="595959")
 
+    r = 4
+    if p.drawing_mode in ("scanned", "none"):
+        msg = ("WARNING: the uploaded drawings could not be read (scanned images/photos). Quantities are for a TYPICAL house "
+               "of this plot size, not for these drawings - every line is an assumption." if p.drawing_mode == "scanned" else
+               "No drawings were uploaded - quantities are for a TYPICAL house of this plot size (all lines are assumptions).")
+        c = ws.cell(row=r, column=2, value=msg)
+        c.font = _font(size=11, bold=True, color="FFFFFF")
+        c.fill = PatternFill("solid", fgColor="C00000")
+        c.alignment = Alignment(wrap_text=True, vertical="center")
+        ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=9)
+        ws.row_dimensions[r].height = 34
+        r += 1
     # contents (links filled in at the end, once the shopping-list row is known)
-    r = 5
+    r += 1
     ws.cell(row=r, column=2, value="CONTENTS  (click to open)").font = _font(size=10, bold=True, color=NAVY)
     contents = [
         ("Shopping list - all materials to buy (further down this page)", None),

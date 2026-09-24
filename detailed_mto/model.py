@@ -124,9 +124,23 @@ class DetailedProject:
     options: Options = field(default_factory=Options)
     assumptions: List[str] = field(default_factory=list)
     conflicts: List[str] = field(default_factory=list)
+    # user edits {param_key: value}; applied when the parameter is SET, so every value
+    # derived from it afterwards (wall heights, building height, sewer length ...) follows
+    overrides: Dict[str, float] = field(default_factory=dict)
+    # "cad" = vector drawings were read; "scanned" = drawings uploaded but unreadable
+    # (images / scans); "none" = no drawings uploaded (plot template / manual values)
+    drawing_mode: str = "cad"
 
     # --- param helpers ---------------------------------------------------
     def set(self, key, label, value, unit, group, source="Default", confidence=ASSUMED, note="") -> None:
+        if key in self.overrides:
+            try:
+                v = float(self.overrides[key])
+                self.params[key] = Param(key, label, v, unit, group, "User input", USER,
+                                         f"Edited by user (drawing/default value was {float(value or 0.0):,.2f})")
+                return
+            except (TypeError, ValueError):
+                pass
         self.params[key] = Param(key, label, float(value or 0.0), unit, group, source, confidence, note)
 
     def v(self, key: str, default: float = 0.0) -> float:

@@ -1,4 +1,4 @@
-# CostLens — *From plans to materials.* (v0.5.1)
+# CostLens — *From plans to materials.* (v0.5.2)
 
 A drawing-based **Material Take-Off (MTO)** tool for 5-10 marla houses in
 Pakistan. Upload the complete drawing set (CAD-exported PDFs work best); the
@@ -544,6 +544,19 @@ lines). See **[DETAILED_MTO.md](DETAILED_MTO.md)**.
 ---
 
 ## 8. Changelog
+
+**v0.5.2 — trustworthy results**
+- Scanned drawings / photos are detected: a clear warning in Steps 2-5 and in
+  the Excel, the continue button says "typical-house values", and no line is
+  marked as calculated from drawings (everything is "assumed" until verified).
+- Edits in Step 3 → Counts & dimensions now flow into every derived value
+  (e.g. floor height → wall heights, building height, pipe risers).
+- Input checks: impossible values (negative counts, zero floor height, 30"
+  slab ...) block the calculation; unusual values for a 5-10 marla house are
+  flagged for confirmation. Negative quantities can never be produced.
+- Results are never stale: Step 4/5 recalculate automatically when inputs
+  changed (and say so); unsaved Rooms / Doors & windows edits are kept when
+  leaving Step 3 through the sidebar.
 
 **v0.5.1 — readable, interactive export & navigation**
 - Excel Summary rewritten for non-technical readers: main materials at a

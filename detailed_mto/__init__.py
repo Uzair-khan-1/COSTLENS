@@ -26,8 +26,7 @@ def run_detailed_mto(project_inputs, params, facts=None, files=None, options: Op
                      overrides: Optional[Dict[str, float]] = None, scan: Optional[ScanResult] = None,
                      db_path: Optional[str] = None) -> Tuple[DetailedResult, bytes]:
     kb = load_knowledge_base(db_path)
-    project = build_project(project_inputs, params, kb, facts=facts, files=files, scan=scan, options=options)
-    for key, val in (overrides or {}).items():
-        project.override(key, val)
+    project = build_project(project_inputs, params, kb, facts=facts, files=files, scan=scan, options=options,
+                            overrides=overrides)
     result = compute(project, kb, scope=(options.scope if options else None))
     return result, build_detailed_mto_workbook(result)

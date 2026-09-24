@@ -18,7 +18,7 @@ from __future__ import annotations
 import math
 from typing import Optional
 
-from detailed_mto.model import ASSUMED, HIGH, LOW, MEDIUM, DetailedProject, Floor, OpeningGroup, Options, Room
+from detailed_mto.model import ASSUMED, HIGH, LOW, MEDIUM, USER, DetailedProject, Floor, OpeningGroup, Options, Room
 from detailed_mto.text_scanner import ScanResult, scan_pdf_bytes
 from knowledge.loader import KnowledgeBase
 
@@ -40,6 +40,9 @@ def _est(e, default=0.0):
 
 def _conf_of(e) -> str:
     try:
+        src = getattr(getattr(e, "source", None), "value", str(getattr(e, "source", "")))
+        if src in ("User-edited", "User-input"):
+            return USER
         c = getattr(e.confidence, "value", str(e.confidence))
         return {"High": HIGH, "Medium": MEDIUM, "Low": LOW}.get(c, MEDIUM)
     except Exception:
@@ -64,13 +67,15 @@ def classify_room(name: str, kind: str, kb: KnowledgeBase) -> str:
 
 def build_project(project_inputs, params, kb: KnowledgeBase, facts=None, files: Optional[list] = None,
                   scan: Optional[ScanResult] = None, options: Optional[Options] = None,
-                  rooms_override: Optional[list] = None, openings_override: Optional[list] = None) -> DetailedProject:
+                  rooms_override: Optional[list] = None, openings_override: Optional[list] = None,
+                  overrides: Optional[dict] = None, drawing_mode: Optional[str] = None) -> DetailedProject:
     """rooms_override / openings_override: user-reviewed lists of Room / OpeningGroup that replace the
     drawing-derived ones BEFORE counts that depend on them (baths, kitchens, points ...) are derived."""
     pi = project_inputs
     p = DetailedProject(project_name=getattr(pi, "project_name", "") or "Untitled Project",
                         client=getattr(pi, "client_name", ""), location=getattr(pi, "location", ""))
     p.options = options or Options()
+    p.overrides = dict(overrides or {})
     if scan is None:
         try:
             scan = scan_pdf_bytes(files or [])
@@ -78,6 +83,9 @@ def build_project(project_inputs, params, kb: KnowledgeBase, facts=None, files: 
             scan = ScanResult(notes=[f"Label scan skipped: {exc}"])
     has_facts = facts is not None and getattr(facts, "has_facts", lambda: False)()
     fx = facts if has_facts else None
+    if drawing_mode is None:
+        drawing_mode = "cad" if has_facts else ("scanned" if files else "none")
+    p.drawing_mode = drawing_mode
 
     def fact(dct_name, key):
         if fx is None:
@@ -93,6 +101,7 @@ def build_project(project_inputs, params, kb: KnowledgeBase, facts=None, files: 
     p.set("PLOT_W", "Plot width", pw, "ft", "Site", plot_w[1] if plot_w else "Step 1 input / unknown",
           HIGH if plot_w else (MEDIUM if pw else ASSUMED))
     p.set("PLOT_D", "Plot depth", pdp, "ft", "Site", plot_d[1] if plot_d else "Unknown", HIGH if plot_d else ASSUMED)
+    pw, pdp = p.v("PLOT_W"), p.v("PLOT_D")  # user edits flow into everything derived below
     if fx is not None:
         p.conflicts.extend(getattr(fx, "conflicts", []) or [])
     p.conflicts.extend(scan.notes)
@@ -408,8 +417,8 @@ def build_project(project_inputs, params, kb: KnowledgeBase, facts=None, files: 
           "rft", "Architecture", "stair flights + 8 ft per balcony", ASSUMED)
 
     # --------------------------------------------------------------- external
-    gate_w = 10.0
-    p.set("GATE_W", "Main gate width", gate_w, "ft", "External", "Default (GATE label on GF plan)", ASSUMED)
+    p.set("GATE_W", "Main gate width", 10.0, "ft", "External", "Default (GATE label on GF plan)", ASSUMED)
+    gate_w = p.v("GATE_W")
     p.set("GATE_H", "Main gate height", 7.0, "ft", "External", "Default", ASSUMED)
     bl = max((pw or 30) - gate_w, 0) if built_to_sides else max(2 * (pdp or 50) + (pw or 30) - gate_w, 0)
     p.set("BOUNDARY_LEN", "Boundary wall length", bl, "rft", "External",
@@ -420,4 +429,25 @@ def build_project(project_inputs, params, kb: KnowledgeBase, facts=None, files: 
           "External", "Exposed frontage", ASSUMED)
     p.set("RWH_N", "Rainwater recharge wells", 1 if p.options.include_rwh else 0, "Nos", "External",
           "CDA requirement (not in drawings)", ASSUMED)
+
+    if p.drawing_mode != "cad":
+        # Nothing was READ from drawings: everything except the user's own edits is a template /
+        # default value and must be shown (and exported) as such.
+        for prm in p.params.values():
+            if prm.confidence != USER:
+                prm.confidence = ASSUMED
+        for fl in p.floors:
+            fl.confidence = ASSUMED
+        for rm in p.rooms:
+            if rm.confidence != USER:
+                rm.confidence = ASSUMED
+        for o in p.openings:
+            if o.confidence != USER:
+                o.confidence = ASSUMED
+        if p.drawing_mode == "scanned":
+            p.conflicts.insert(0, "The uploaded drawings are scanned images / photos - no dimensions could be read from them. "
+                                  "Quantities are based on a TYPICAL house for the chosen plot size, not on these drawings. "
+                                  "Use the AI analysis in Step 2 or enter the rooms, doors and key dimensions in Step 3.")
+        else:
+            p.assumptions.insert(0, "No drawings uploaded - quantities are based on a typical house for the chosen plot size.")
     return p
