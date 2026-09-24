@@ -353,15 +353,17 @@ def render_takeoff(res: DetailedResult) -> None:
         for c, (label, ids, unit, div) in zip(cols, shown[i:i + 3]):
             v = _total(res, ids) / div
             c.metric(label, f"{v:,.2f} {unit}" if div > 1 else f"{v:,.0f} {unit}")
-    if res.project.conflicts:
-        with st.expander(f"⚠️ Drawing conflicts found ({len(res.project.conflicts)})", expanded=True):
-            for c in res.project.conflicts:
-                st.warning(c)
+    from ui import copilot_views
+    copilot_views.render_checker(res)  # drawing conflicts, odd ratios, inconsistencies - with one-click fixes
 
-    t0, t1, t2, t3, t4, t5, t6 = st.tabs(["🛒 Shopping list", "📋 Material schedule", "🗓️ By construction stage",
-                                           "📐 Work items", "🔍 Traceability", "📝 Assumptions & gaps", "✅ Checks"])
+    t0, tc, t1, t2, t3, t4, t5, t6 = st.tabs(["🛒 Shopping list", "🤖 Copilot", "📋 Material schedule",
+                                               "🗓️ By construction stage", "📐 Work items", "🔍 Traceability",
+                                               "📝 Assumptions & gaps", "✅ Checks"],
+                                              key="dmto_step4_tabs")  # keyed: stays on the same tab after a button click
     with t0:
         _shopping_tab(res)
+    with tc:
+        copilot_views.render_copilot(res)
     with t1:
         _schedule_tab(res)
     with t2:

@@ -127,3 +127,22 @@ Concept floor geometry: covered area = room areas x 1.28; wall centre-line lengt
 + external perimeter) / 2; 25 % of internal walls 9" in load-bearing houses (15 % in RCC frames) - calibrated on
 the 31-sheet 5 marla set (total wall length within 1 %). Tune these in `_floor_geometry()` as more real projects
 are compared.
+
+
+## Copilot (agentic features)
+
+```
+copilot/state.py     ProjectState (the reviewed inputs) + validated change application (pure, testable)
+copilot/analysis.py  key totals & diffs, explain, sensitivity ranking, question bank, take-off checker,
+                     material-saving options, scenario table - all deterministic, no AI needed
+copilot/agent.py     tool definitions + Groq tool-calling loop (max 6 steps, fallback model),
+                     offline router for common requests when there is no key
+ui/copilot_views.py  Step 3 "Most important questions", Step 4 "Take-off check" and "Copilot" tab,
+                     proposals (Apply / Dismiss), undo, scenarios
+```
+
+Design rules: the LLM never produces quantities - it calls tools that run the engine; every change is a
+proposal validated by the input checks and applied only by the user (with an undo snapshot); tool outputs
+are compact so free-tier requests stay small. Tests (`tests/test_copilot.py`) use a scripted fake LLM client
+to cover tool calls, bad arguments, unknown tools, step limits and API failures. The model is set in
+`config.GROQ_TOOL_MODEL` (fallback `llama-3.3-70b-versatile`).

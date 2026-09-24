@@ -14,7 +14,7 @@ from pathlib import Path
 APP_NAME = "CostLens"
 APP_TAGLINE = "From plans to materials."
 APP_FULL_NAME = "CostLens - Drawing-based Material Take-Off for 5-10 marla houses"
-APP_VERSION = "0.6.0"
+APP_VERSION = "0.7.0"
 
 # Brand assets (see assets/generate_logo.py to regenerate/tweak).
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
@@ -45,6 +45,7 @@ BRAND_BG = "#F4F7FB"
 GROQ_VISION_MODEL_DEFAULT = "qwen/qwen3.8-27b"
 GROQ_VISION_MODEL_FALLBACK_DEFAULT = "qwen/qwen3.6-27b"
 GROQ_TEXT_MODEL = "openai/gpt-oss-120b"
+GROQ_TOOL_MODEL = "openai/gpt-oss-120b"  # copilot (tool calling); falls back to llama-3.3-70b-versatile
 
 # Max images accepted in ONE Groq vision request. qwen/qwen3.8-27b accepts
 # at most 3 images per request (qwen3.6-27b: 5) - sending more returns a

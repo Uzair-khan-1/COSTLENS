@@ -814,9 +814,11 @@ def step_3():
     st.caption(mto_views.options_summary(st.session_state["dmto_options"]) + " (change in Step 1)")
 
     mto_views.seed_review_rows(pi, params)
+    from ui import copilot_views
+    copilot_views.render_smart_questions()
     t_rooms, t_open, t_counts, t_struct, t_coef = st.tabs(
         ["\U0001f3e0 Rooms", "\U0001f6aa Doors & windows", "\U0001f522 Counts & dimensions", "\U0001f3d7\ufe0f Structure",
-         "\U0001f4da Coefficients"])
+         "\U0001f4da Coefficients"], key="dmto_step3_tabs")
     with t_struct:
         if units.is_fps(unit_system):
             st.caption("FPS units: lengths in feet, member sizes in inches, areas in sqft.")

@@ -1,4 +1,4 @@
-# CostLens — *From plans to materials.* (v0.6.0)
+# CostLens — *From plans to materials.* (v0.7.0)
 
 A drawing-based **Material Take-Off (MTO)** tool for 5-10 marla houses in
 Pakistan. Upload the complete drawing set (CAD-exported PDFs work best); the
@@ -553,6 +553,19 @@ lines). See **[DETAILED_MTO.md](DETAILED_MTO.md)**.
 ---
 
 ## 8. Changelog
+
+**v0.7.0 — agentic copilot (first slice)**
+- **Most important questions** (Step 3): every assumed input is tested against the take-off; only the
+  ones that move the main materials most are asked, in plain language with one-click answers.
+- **Take-off check** (Step 4): after every calculation - unusual ratios with the reason (e.g. which
+  work items drive the steel), inconsistencies (floor traps vs baths, columns in a load-bearing house,
+  missing stairs/kitchen, oversized mumty), assumed windows/electrical, drawing conflicts; one-click fixes.
+- **Copilot** tab (Step 4): explain any material or group ("why 955 bags of cement?"), what-if
+  comparisons, material-saving options, and edits by chat ("make the master bedroom 14x15"). With a
+  free Groq key it is a tool-using agent (it can only call the take-off engine - it never invents
+  numbers); without a key a built-in assistant handles the common requests.
+- Every change is a proposal with its effect on the main materials -> Apply / Dismiss; undo history;
+  named scenarios compared side by side.
 
 **v0.6.0 — guided route for users without drawings**
 - Step 1 asks "What do you have?": architect's drawings, or a sketch / photo / idea.

@@ -90,6 +90,7 @@ def reset_project():
         "dmto_options",
         *DMTO_DERIVED_KEYS,
         *BRIEF_KEYS,
+        *COPILOT_KEYS,
     ]
     for k in keys_to_clear:
         if k in st.session_state:
@@ -103,6 +104,7 @@ def reset_project():
 
 
 DMTO_DERIVED_KEYS = ["dmto_scan", "dmto_rooms", "dmto_openings", "dmto_overrides", "dmto_result", "dmto_xlsx", "dmto_floors"]
+COPILOT_KEYS = ["copilot_msgs", "copilot_props", "copilot_undo", "copilot_scenarios"]
 BRIEF_KEYS = ["input_mode", "brief", "brief_ver", "sketch_files", "brief_ai_json", "brief_ai_got", "brief_used_ai",
               "brief_rooms_live", "sketch_uploader", "brief_added"]
 
@@ -136,6 +138,7 @@ def clear_drawing_derived_state():
         "cost_summary",
         "used_ai",
         *DMTO_DERIVED_KEYS,
+        *COPILOT_KEYS,
     ]:
         if k in st.session_state:
             del st.session_state[k]
