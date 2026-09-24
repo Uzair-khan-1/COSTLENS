@@ -68,7 +68,7 @@ def test_every_material_is_listed_with_a_status(kb, pi):
         assert "error" not in w.calculation.lower(), (w.wi_id, w.calculation)
     wb = load_workbook(BytesIO(xlsx))
     assert wb.sheetnames[:2] == ["Summary", "Material_Schedule"]
-    assert wb["Material_Schedule"].max_row >= len(kb.materials) + 1
+    assert wb["Material_Schedule"].max_row >= len(kb.materials) + 3
 
 
 def test_core_quantities_are_positive_and_consistent(pi):
@@ -209,7 +209,7 @@ def test_rooms_override_drives_derived_counts(kb, pi):
 def test_export_has_no_cost_columns(pi):
     _, xlsx = run_detailed_mto(pi, _params(pi))
     wb = load_workbook(BytesIO(xlsx))
-    headers = [c.value for c in wb["Material_Schedule"][1]]
+    headers = [c.value for c in wb["Material_Schedule"][3]]
     assert not any("Rate" in (h or "") or "Amount" in (h or "") for h in headers)
 
 
@@ -229,3 +229,33 @@ def test_benchmarks_depend_on_structural_system(kb, pi):
     p = build_project(pi, _params(pi), kb)
     steel = [b for b in benchmarks_for(p) if b[2] == "kg/sft"][0]
     assert ("RCC frame" in steel[0]) == (p.v("FDN_STRIP") < 0.5)
+
+
+# ------------------------------------------------------------------ v0.5.1 export & scope
+def test_export_excludes_out_of_scope_materials(pi):
+    res, xlsx = run_detailed_mto(pi, _params(pi), options=Options(scope="Electrical"))
+    wb = load_workbook(BytesIO(xlsx))
+    ids = [c.value for c in wb["Material_Schedule"]["A"][3:] if c.value]
+    assert ids and all(i in {m.material.mat_id for m in res.scoped_materials()} for i in ids)
+    assert "RBR-002" not in ids and "CON-001" not in ids
+    assert not any(m.status == ST_SCOPE for m in res.scoped_materials())
+    cats = {c.value for c in wb["Material_Schedule"]["B"][3:] if c.value}
+    assert "Reinforcement & Steel" not in cats
+
+
+def test_summary_has_shopping_list_with_every_purchased_material(pi):
+    res, xlsx = run_detailed_mto(pi, _params(pi))
+    ws = load_workbook(BytesIO(xlsx))["Summary"]
+    codes = {c.value for c in ws["J"] if isinstance(c.value, str) and "-" in c.value}
+    assert {m.material.mat_id for m in res.purchase_list()} <= codes
+    texts = [c.value for c in ws["B"] if isinstance(c.value, str)]
+    assert any("SHOPPING LIST" in t for t in texts)
+    assert ws["B6"].hyperlink is not None  # contents links
+
+
+def test_purchase_units(kb):
+    from detailed_mto.engine import purchase_qty
+    assert purchase_qty(kb.materials["CON-001"], 954.2) == (955, "bags (50 kg)")
+    assert purchase_qty(kb.materials["RBR-002"], 3233.1) == (3.24, "ton")
+    assert purchase_qty(kb.materials["ELE-006"], 825) == (10, "coils (90 m)")
+    assert purchase_qty(kb.materials["MAS-001"], 83594.9)[0] == 83600

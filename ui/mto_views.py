@@ -20,8 +20,8 @@ from detailed_mto import build_project, compute
 from detailed_mto.edits import (OPENING_COLS, ROOM_COLS, mark_user_edits, openings_to_rows, rooms_to_rows,
                                 rows_to_openings, rows_to_rooms)
 from detailed_mto.engine import (INCLUDED_STATUSES, ST_CALC, ST_CALC_ASSUMED, ST_NEEDS_INPUT, ST_OPTION, ST_PROVISIONAL,
-                                 ST_REFERENCE, DetailedResult)
-from detailed_mto.export import benchmarks_for
+                                 ST_REFERENCE, DetailedResult, purchase_qty)
+from detailed_mto.export import STAGE_NAMES, benchmarks_for
 from knowledge import load_knowledge_base
 
 FLOOR_KEYS = ["basement", "ground", "first", "second", "third", "roof"]
@@ -219,21 +219,25 @@ def render_takeoff(res: DetailedResult) -> None:
     counts = res.status_counts()
     quantified = sum(v for k, v in counts.items() if k in INCLUDED_STATUSES)
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Materials in database", len(res.materials))
+    m1.metric("Materials in scope", len(res.scoped_materials()))
     m2.metric("Quantified", quantified)
     m3.metric("Using assumed inputs", counts.get(ST_CALC_ASSUMED, 0))
     m4.metric("Need your input", counts.get(ST_NEEDS_INPUT, 0))
-    cols = st.columns(len(KEY_TOTALS))
-    for c, (label, ids, unit, div) in zip(cols, KEY_TOTALS):
-        v = _total(res, ids) / div
-        c.metric(label, f"{v:,.2f} {unit}" if div > 1 else f"{v:,.0f} {unit}")
+    shown = [(label, ids, unit, div) for label, ids, unit, div in KEY_TOTALS if _total(res, ids) > 0]
+    for i in range(0, len(shown), 3):
+        cols = st.columns(3)
+        for c, (label, ids, unit, div) in zip(cols, shown[i:i + 3]):
+            v = _total(res, ids) / div
+            c.metric(label, f"{v:,.2f} {unit}" if div > 1 else f"{v:,.0f} {unit}")
     if res.project.conflicts:
         with st.expander(f"⚠️ Drawing conflicts found ({len(res.project.conflicts)})", expanded=True):
             for c in res.project.conflicts:
                 st.warning(c)
 
-    t1, t2, t3, t4, t5, t6 = st.tabs(["📋 Material schedule", "🗓️ By construction stage", "📐 Work items",
-                                       "🔍 Traceability", "📝 Assumptions & gaps", "✅ Checks"])
+    t0, t1, t2, t3, t4, t5, t6 = st.tabs(["🛒 Shopping list", "📋 Material schedule", "🗓️ By construction stage",
+                                           "📐 Work items", "🔍 Traceability", "📝 Assumptions & gaps", "✅ Checks"])
+    with t0:
+        _shopping_tab(res)
     with t1:
         _schedule_tab(res)
     with t2:
@@ -241,7 +245,7 @@ def render_takeoff(res: DetailedResult) -> None:
     with t3:
         st.dataframe(pd.DataFrame([{"WI_ID": w.wi_id, "Division": w.division, "Work item": w.description, "Unit": w.unit,
                                     "Quantity": round(w.qty, 2), "Status": w.status, "Confidence": w.confidence,
-                                    "Calculation": w.calculation} for w in res.work_items]),
+                                    "Calculation": w.calculation} for w in res.scoped_work_items()]),
                      hide_index=True, width="stretch", height=520)
     with t4:
         _trace_tab(res)
@@ -251,15 +255,53 @@ def render_takeoff(res: DetailedResult) -> None:
         _checks_tab(res)
 
 
+def _reliability(m) -> str:
+    if m.material.unit.upper() == "LS":
+        return "Lump-sum item"
+    if m.status == ST_PROVISIONAL:
+        return "Allowance - confirm with owner"
+    return "✔ From drawings / inputs" if m.confidence in ("High", "Medium", "User") else "⚠ Check - uses defaults"
+
+
+def _shopping_tab(res: DetailedResult) -> None:
+    buy = res.purchase_list()
+    cats = list(dict.fromkeys(m.material.category for m in buy))
+    st.caption(f"{len(buy)} materials to purchase for scope **{res.scope}**, rounded up to how they are sold "
+               "(bags, tons, coils, pipe lengths, hundreds of bricks). Wastage is included.")
+    c1, c2 = st.columns([3, 1])
+    sel = c1.multiselect("Trade", cats, default=[], placeholder="All trades", key="dmto_shop_cat")
+    only_check = c2.checkbox("Only items to check", key="dmto_shop_check", help="Items whose quantity uses default values")
+    rows = []
+    for m in buy:
+        if sel and m.material.category not in sel:
+            continue
+        rel = _reliability(m)
+        if only_check and not rel.startswith("⚠"):
+            continue
+        q, unit = purchase_qty(m.material, m.gross_qty)
+        code = _stage_code(m)
+        rows.append({"Material": m.material.description, "Quantity to buy": q, "Buy unit": unit,
+                     "When needed": f"{code} - {STAGE_NAMES.get(code, '')}", "Reliability": rel,
+                     "Specification": m.material.specification, "Trade": m.material.category, "Code": m.material.mat_id})
+    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch", height=560,
+                 column_config={"Material": st.column_config.TextColumn(width="large"),
+                                "Quantity to buy": st.column_config.NumberColumn(format="localized", width="small"),
+                                "Buy unit": st.column_config.TextColumn(width="small")})
+    pending = [m for m in res.scoped_materials() if m.status == ST_NEEDS_INPUT]
+    if pending:
+        st.warning("Still to be quantified (an input is missing): " +
+                   "; ".join(f"{m.material.description} ({m.material.required_inputs or 'quantity'})" for m in pending))
+
+
 def _schedule_tab(res: DetailedResult) -> None:
-    cats = list(dict.fromkeys(m.material.category for m in res.materials))
-    statuses = [ST_CALC, ST_CALC_ASSUMED, ST_PROVISIONAL, ST_NEEDS_INPUT, ST_OPTION, ST_REFERENCE, "Not required", "Not in scope"]
+    cats = list(dict.fromkeys(m.material.category for m in res.scoped_materials()))
+    statuses = [ST_CALC, ST_CALC_ASSUMED, ST_PROVISIONAL, ST_NEEDS_INPUT, ST_OPTION, ST_REFERENCE, "Not required"]
     c1, c2, c3 = st.columns([2, 2, 1])
     sel_cats = c1.multiselect("Categories", cats, default=[], placeholder="All categories", key="dmto_f_cat")
     sel_st = c2.multiselect("Status", statuses, default=[ST_CALC, ST_CALC_ASSUMED, ST_PROVISIONAL, ST_NEEDS_INPUT], key="dmto_f_st")
     q = c3.text_input("Search", key="dmto_f_q")
     rows = []
-    for m in res.materials:
+    for m in res.scoped_materials():
         if sel_cats and m.material.category not in sel_cats:
             continue
         if sel_st and m.status not in sel_st:
@@ -285,7 +327,7 @@ def _stage_code(m) -> str:
 def _stage_tab(res: DetailedResult) -> None:
     k = kb()
     stages = sorted({_stage_code(m) for m in res.materials if m.included})
-    labels = {s: f"{s} - {k.stages.get(s, '')}" for s in stages}
+    labels = {s: f"{s} - {STAGE_NAMES.get(s, k.stages.get(s, ''))}" for s in stages}
     s = st.selectbox("Construction stage", stages, format_func=lambda x: labels[x], key="dmto_stage")
     rows = [{"Mat_ID": m.material.mat_id, "Material": m.material.description, "Unit": m.material.unit,
              "Qty incl. wastage": round(m.gross_qty, 2), "Purchase": m.purchase, "Status": m.status}
@@ -296,7 +338,7 @@ def _stage_tab(res: DetailedResult) -> None:
 
 
 def _trace_tab(res: DetailedResult) -> None:
-    inc = [m for m in res.materials if m.included or m.if_selected_qty]
+    inc = [m for m in res.scoped_materials() if m.included or m.if_selected_qty]
     if not inc:
         return
     labels = {m.material.mat_id: f"{m.material.mat_id} - {m.material.description}" for m in inc}
@@ -322,7 +364,7 @@ def _assumptions_tab(res: DetailedResult) -> None:
     p = res.project
     for a in p.assumptions:
         st.info(a)
-    needs = [m for m in res.materials if m.status == ST_NEEDS_INPUT]
+    needs = [m for m in res.scoped_materials() if m.status == ST_NEEDS_INPUT]
     if needs:
         st.markdown("**Materials that need an input**")
         for m in needs:
@@ -367,7 +409,7 @@ def schedule_csv(res: DetailedResult) -> bytes:
                         "Material": m.material.description, "Specification": m.material.specification, "Unit": m.material.unit,
                         "Net qty": round(m.net_qty, 3), "Wastage %": round(m.wastage_pct * 100, 1),
                         "Qty incl. wastage": round(m.gross_qty, 3), "Purchase": m.purchase, "Status": m.status,
-                        "Confidence": m.confidence, "Stage": m.material.stage} for m in res.materials])
+                        "Confidence": m.confidence, "Stage": m.material.stage} for m in res.scoped_materials()])
     return df.to_csv(index=False).encode("utf-8")
 
 

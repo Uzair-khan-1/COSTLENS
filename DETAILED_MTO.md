@@ -53,6 +53,18 @@ can correct it in the review tables.
 | Needs input | cannot be calculated without a user value |
 | Not required / Not in scope | zero for this project / outside selected scope |
 
+## The Excel export
+
+* **Summary** (opens first): main materials at a glance, how firm the numbers
+  are, and a **shopping list of every material to buy** grouped by trade
+  (use the +/- buttons to open/close a trade), in purchase units, with the
+  construction stage and a reliability flag (✔ from drawings / ⚠ check).
+* Only materials inside the selected **scope** are exported.
+* Every sheet has a "◄ Summary" link, filter/sort buttons and colour-coded
+  status; click a Mat_ID to jump between the schedule and its calculation.
+* Wastage % (blue) is editable in Material_Schedule; qty incl. wastage, buy
+  quantities, the Summary and the benchmarks recalculate.
+
 ## Editing the knowledge base
 
 `data/master_material_database.xlsx` is the single source of truth. Edit

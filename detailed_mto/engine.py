@@ -120,11 +120,29 @@ class DetailedResult:
     def by_id(self, mat_id: str) -> Optional[MaterialLine]:
         return next((m for m in self.materials if m.material.mat_id == mat_id), None)
 
-    def status_counts(self) -> Dict[str, int]:
+    def status_counts(self, in_scope_only: bool = True) -> Dict[str, int]:
         out: Dict[str, int] = {}
-        for m in self.materials:
+        for m in (self.scoped_materials() if in_scope_only else self.materials):
             out[m.status] = out.get(m.status, 0) + 1
         return out
+
+    # --- scope-filtered views (what the user selected) ---------------------
+    def scoped_materials(self) -> List[MaterialLine]:
+        return [m for m in self.materials if m.status != ST_SCOPE]
+
+    def purchase_list(self) -> List[MaterialLine]:
+        return [m for m in self.materials if m.included and m.gross_qty > 0]
+
+    def scoped_contributions(self) -> List[Contribution]:
+        ok = {m.material.mat_id for m in self.scoped_materials()}
+        return [c for c in self.contributions if c.mat_id in ok]
+
+    def scoped_work_items(self) -> List[WorkItemLine]:
+        if self.scope == "Complete Project":
+            return list(self.work_items)
+        used = {c.wi_id for c in self.scoped_contributions()}
+        allowed = SCOPE_TO_MAT_SCOPES.get(self.scope) or set()
+        return [w for w in self.work_items if w.wi_id in used or w.scope in allowed]
 
 
 # ---------------------------------------------------------------------------
@@ -151,24 +169,54 @@ def _blend_confidence(parts: List[tuple]) -> str:
     return LOW if share >= 0.5 else ASSUMED
 
 
+WIRE_IDS = {"ELE-006", "ELE-007", "ELE-008", "ELE-009", "ELE-011"}
+STEEL_BAR_IDS = {"RBR-001", "RBR-002", "RBR-003", "RBR-004"}
+BULK_CFT_IDS = {"CON-004", "CON-005", "CON-006", "CON-007", "CON-008", "EW-002", "EW-003", "EXT-003", "PDR-020", "WPF-009", "EXT-004", "RWH-002"}
+
+
+def purchase_rule(mat: Material):
+    """How a material is bought: returns (divisor, round-up digits, buy-unit label).
+    Buy qty = ROUNDUP(qty incl. wastage / divisor, digits). Used for the export formulas too."""
+    u = mat.unit.lower()
+    mid = mat.mat_id
+    if u == "ls":
+        return None, 0, "lump sum"
+    if u == "bag":
+        return 1, 0, "bags (50 kg)"
+    if mid in STEEL_BAR_IDS:
+        return 1000, 2, "ton"
+    if mid in WIRE_IDS:
+        return 90, 0, "coils (90 m)"
+    if u == "rft" and mat.wastage_key in ("W_PIPE_PPR", "W_PIPE_UPVC", "W_CONDUIT", "W_COPPER"):
+        return 13, 0, "lengths (~13 ft)"
+    if mid in ("MAS-001", "MAS-002"):
+        return 1, -2, "bricks"
+    if u == "cft" and mid in BULK_CFT_IDS:
+        return 1, -1, "cft"
+    return 1, 0, mat.unit
+
+
+def purchase_qty(mat: Material, gross: float):
+    """(buy quantity, buy unit) for a quantity incl. wastage."""
+    div, digits, unit = purchase_rule(mat)
+    if gross <= 0:
+        return 0.0, unit
+    if div is None:
+        return 1.0, unit
+    x = gross / div
+    f = 10 ** digits
+    return math.ceil(x * f - 1e-9) / f, unit
+
+
 def purchase_text(mat: Material, gross: float) -> str:
     if gross <= 0:
         return ""
-    u = mat.unit.lower()
-    mid = mat.mat_id
-    if u == "bag":
-        return f"{math.ceil(gross):,} bags"
-    if u == "kg" and mid.startswith("RBR-00") and mid in ("RBR-001", "RBR-002", "RBR-003", "RBR-004"):
-        return f"{gross / 1000:,.2f} ton"
-    if u == "m" and mid in ("ELE-006", "ELE-007", "ELE-008", "ELE-009", "ELE-011"):
-        return f"{math.ceil(gross / 90):,} coil(s) of 90 m"
-    if u == "rft" and mat.wastage_key in ("W_PIPE_PPR", "W_PIPE_UPVC", "W_CONDUIT", "W_COPPER"):
-        return f"{math.ceil(gross / 13):,} length(s) of ~13 ft"
-    if u in ("nos", "set", "gal", "tube", "trip", "coil", "l"):
-        return f"{math.ceil(gross - 1e-9):,} {mat.unit}"
-    if u == "cft" and mid in ("CON-004", "CON-005", "CON-006", "CON-007", "CON-008", "EW-002"):
-        return f"~{gross / 100:,.1f} trolley(s) of 100 cft"
-    return ""
+    q, unit = purchase_qty(mat, gross)
+    if unit == "lump sum":
+        return "lump sum"
+    txt = f"{q:,.2f}" if q != int(q) else f"{int(q):,}"
+    extra = f" (~{gross / 100:,.1f} trolleys)" if unit == "cft" and mat.mat_id in BULK_CFT_IDS and gross >= 100 else ""
+    return f"{txt} {unit}{extra}"
 
 
 def compute(project: DetailedProject, kb: KnowledgeBase, scope: Optional[str] = None) -> DetailedResult:

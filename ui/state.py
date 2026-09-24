@@ -17,6 +17,8 @@ from mto_boq.rates import load_default_rates
 def init_session_state():
     defaults = {
         "step": 1,
+        "max_step": 1,  # furthest step reached - sidebar navigation allows jumping to any step up to this
+        "_scrolled_step": None,  # last step the page was scrolled to the top for
         "groq_api_key": "",
         "uploaded_files": [],  # list of {"name": str, "bytes": bytes, "view_tag": str}
         "uploaded_images": [],
@@ -79,6 +81,7 @@ def reset_project():
         "cost_summary",
         "used_ai",
         "drawing_uploader",  # clears the file_uploader widget itself
+        "max_step",
         "dmto_options",
         *DMTO_DERIVED_KEYS,
     ]
@@ -134,3 +137,4 @@ def clear_drawing_derived_state():
 
 def go_to_step(n: int):
     st.session_state["step"] = n
+    st.session_state["max_step"] = max(int(st.session_state.get("max_step", 1) or 1), n)

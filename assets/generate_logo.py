@@ -145,7 +145,7 @@ def draw_horizontal_lockup(
     wm_y = int(H * 0.14)
     d.text((text_x, wm_y), "CostLens", font=wordmark_font, fill=wordmark_color)
 
-    tagline = "FROM  PLANS  TO  PRICE"
+    tagline = "FROM  PLANS  TO  MATERIALS"
     tag_y = int(H * 0.70)
     d.text((text_x, tag_y), tagline, font=tagline_font, fill=tagline_color)
 

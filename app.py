@@ -98,7 +98,21 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("### Progress")
-    theme.render_sidebar_steps(STEP_LABELS, st.session_state["step"])
+    def _step_available(n: int) -> bool:
+        if n <= 2:
+            return True
+        if n == 3:
+            return st.session_state.get("extracted_params") is not None
+        if n == 4:
+            return st.session_state.get("extracted_params") is not None
+        return st.session_state.get("dmto_result") is not None
+
+    st.caption("Click a step to jump to it.")
+    _target = theme.render_step_nav(STEP_LABELS, st.session_state["step"], int(st.session_state.get("max_step", 1) or 1),
+                                    _step_available)
+    if _target is not None:
+        go_to_step(_target)
+        st.rerun()
 
     st.markdown("---")
     if st.button("\U0001f504 Start New Project", width="stretch"):
@@ -861,9 +875,9 @@ def step_5():
         return
     counts = res.status_counts()
     st.markdown(
-        f"**{pi.project_name}** \u2014 {len(res.materials)} materials listed, "
-        f"{sum(v for k, v in counts.items() if k in ('Calculated', 'Calculated (assumed inputs)', 'Provisional'))} quantified, "
-        f"{counts.get('Needs input', 0)} need input."
+        f"**{pi.project_name}** \u2014 scope **{res.scope}**: {len(res.scoped_materials())} materials in scope, "
+        f"{len(res.purchase_list())} to purchase, {counts.get('Needs input', 0)} need input. "
+        "Materials outside the selected scope are not included in the files."
     )
     name = (pi.project_name or "Project").replace(" ", "_")
     e1, e2 = st.columns(2)
@@ -877,8 +891,11 @@ def step_5():
         st.download_button("\U0001f4c4 Download material schedule (CSV)", data=mto_views.schedule_csv(res),
                            file_name=f"{name}_Material_Schedule.csv", mime="text/csv", width="stretch")
     st.markdown(
-        "The Excel workbook contains: **Summary** (key quantities, lines by status), **Material_Schedule** (every material "
-        "with net qty, wastage, qty incl. wastage, purchase units, status, confidence, stage and calculation), "
+        "The Excel workbook opens on a **Summary** written for non-technical readers: main materials at a glance and a "
+        "**shopping list of every material to buy** (grouped by trade, collapsible, in purchase units, with when it is "
+        "needed and how reliable it is). Every sheet has clickable links and filter buttons. Detail sheets: "
+        "**Material_Schedule** (every material in scope with net qty, editable wastage, qty incl. wastage, buy qty, "
+        "status, confidence, stage and calculation), "
         "**Procurement_by_Stage**, **BOQ_Work_Items** (measured quantities), **Material_Breakdown** (work item \u00d7 "
         "coefficient for every material), **Project_Inputs** (every input with its source), **Rooms**, **Openings**, "
         "**Assumptions_Gaps** and **Benchmarks**."
@@ -913,3 +930,9 @@ elif step == 5:
 else:
     st.session_state["step"] = 1
     st.rerun()
+
+# A new step always opens at the top of the page (Streamlit keeps the scroll
+# position between reruns otherwise).
+if st.session_state.get("_scrolled_step") != step:
+    st.session_state["_scrolled_step"] = step
+    theme.scroll_to_top()

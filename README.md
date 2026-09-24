@@ -1,4 +1,4 @@
-# CostLens — *From plans to materials.* (v0.5.0)
+# CostLens — *From plans to materials.* (v0.5.1)
 
 A drawing-based **Material Take-Off (MTO)** tool for 5-10 marla houses in
 Pakistan. Upload the complete drawing set (CAD-exported PDFs work best); the
@@ -544,6 +544,18 @@ lines). See **[DETAILED_MTO.md](DETAILED_MTO.md)**.
 ---
 
 ## 8. Changelog
+
+**v0.5.1 — readable, interactive export & navigation**
+- Excel Summary rewritten for non-technical readers: main materials at a
+  glance + a shopping list of every material to buy, grouped by trade
+  (collapsible), in purchase units (bags, tons, coils, pipe lengths,
+  hundreds of bricks), with when it is needed and how reliable it is.
+- Interactive workbook: clickable contents, "◄ Summary" links on every sheet,
+  Excel Tables with filter buttons, colour-coded status, click a Mat_ID to jump
+  to its calculation, collapsible stage groups, buy quantities as live formulas.
+- Only materials inside the selected scope are exported (and shown in Step 4).
+- Step 4 has a Shopping list tab; sidebar steps are clickable; every step
+  opens scrolled to the top.
 
 **v0.5.0 — drawing-based material take-off**
 - The wizard is rebuilt around the Master Material Database: Step 3 reviews

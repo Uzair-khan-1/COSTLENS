@@ -160,6 +160,29 @@ h1, h2, h3 {{ color: {config.BRAND_NAVY}; font-weight: 700; }}
 }}
 
 /* ---------------------------------------------------------------- *
+ * Sidebar step navigation (clickable step buttons)
+ * ---------------------------------------------------------------- */
+.st-key-cl_step_nav .stButton > button {{
+    width: 100%;
+    justify-content: flex-start;
+    text-align: left;
+    padding: 0.45rem 0.8rem;
+    margin-bottom: 2px;
+    border-radius: 10px;
+}}
+.st-key-cl_step_nav .stButton > button > div,
+.st-key-cl_step_nav .stButton > button [data-testid="stMarkdownContainer"] {{ justify-content: flex-start; width: 100%; }}
+.st-key-cl_step_nav .stButton > button p {{ text-align: left; font-weight: 600; }}
+.st-key-cl_step_nav .stButton > button[kind="primary"] {{
+    background: {config.BRAND_GOLD} !important;
+    border: none !important;
+}}
+.st-key-cl_step_nav .stButton > button[kind="primary"] p {{ color: {config.BRAND_NAVY} !important; }}
+.st-key-cl_step_nav .stButton > button:disabled {{ opacity: 0.35; }}
+[data-testid="stMain"], section.main {{ overflow-anchor: none; }}
+.st-key-cl_scroll_top {{ height: 0 !important; min-height: 0 !important; overflow: hidden; margin: 0 !important; padding: 0 !important; }}
+
+/* ---------------------------------------------------------------- *
  * Sidebar step tracker (replaces the plain emoji checklist)
  * ---------------------------------------------------------------- */
 .cl-step {{
@@ -243,3 +266,66 @@ def render_sidebar_steps(step_labels: list[str], current_step: int) -> None:
             state, dot = "cl-step-upcoming", str(i)
         rows.append(f'<div class="cl-step {state}"><span class="cl-step-dot">{dot}</span><span>{label}</span></div>')
     st.markdown("\n".join(rows), unsafe_allow_html=True)
+
+
+def render_step_nav(step_labels: list[str], current_step: int, max_step: int, available=None):
+    """Clickable step list for the sidebar. Steps up to the furthest one reached
+    (and allowed by `available(step)`) are buttons; returns the clicked step or None."""
+    clicked = None
+    with st.container(key="cl_step_nav"):
+        for i, label in enumerate(step_labels, start=1):
+            done = i < current_step or (i <= max_step and i != current_step)
+            icon = "\u25B6" if i == current_step else ("\u2713" if done else "\u25CB")
+            enabled = i <= max_step and (available is None or available(i))
+            if st.button(f"{icon}  {label}", key=f"nav_step_{i}", width="stretch",
+                         type="primary" if i == current_step else "secondary",
+                         disabled=not enabled and i != current_step,
+                         help=None if (enabled or i == current_step) else "Complete the previous steps first"):
+                if i != current_step:
+                    clicked = i
+    return clicked
+
+
+def scroll_to_top() -> None:
+    """Scroll the main page to the top (used when the wizard moves to another step).
+    Streamlit keeps the scroll position between reruns, so without this a new step
+    would open where the previous one was scrolled to."""
+    html = """
+        <script>
+        (function () {
+          const doc = window.parent.document;
+          function up() {
+            const sel = ['[data-testid="stMain"]', '[data-testid="stAppViewContainer"]', 'section.main',
+                         '[data-testid="stAppScrollToBottomContainer"]', '.main'];
+            sel.forEach(function (s) {
+              doc.querySelectorAll(s).forEach(function (el) { try { el.scrollTop = 0; } catch (e) {} });
+            });
+            try { window.parent.scrollTo(0, 0); } catch (e) {}
+            try { doc.documentElement.scrollTop = 0; doc.body.scrollTop = 0; } catch (e) {}
+          }
+          // Streamlit keeps rendering (tables, tabs, charts) after this runs, and browser scroll
+          // anchoring can push the view down again - keep pinning to the top for ~2.5 s unless
+          // the user starts scrolling themselves.
+          let userScrolled = false;
+          ['wheel', 'touchstart', 'keydown', 'mousedown'].forEach(function (ev) {
+            doc.addEventListener(ev, function () { userScrolled = true; }, { once: true, passive: true });
+          });
+          up();
+          [50, 150, 300, 500, 800, 1200, 1700, 2500].forEach(function (t) {
+            setTimeout(function () { if (!userScrolled) up(); }, t);
+          });
+        })();
+        </script>
+        """
+    # A unique marker forces the browser to reload the iframe (and re-run the script)
+    # even when the previous step left an identical iframe at the same position.
+    import time as _time
+
+    html = f"<!-- scroll {_time.time_ns()} -->" + html
+    with st.container(key="cl_scroll_top"):
+        if hasattr(st, "iframe"):
+            st.iframe(html, height=1)
+        else:  # older Streamlit
+            import streamlit.components.v1 as components
+
+            components.html(html, height=0)
