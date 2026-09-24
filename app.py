@@ -108,7 +108,10 @@ with st.sidebar:
         return st.session_state.get("dmto_result") is not None
 
     st.caption("Click a step to jump to it.")
-    _target = theme.render_step_nav(STEP_LABELS, st.session_state["step"], int(st.session_state.get("max_step", 1) or 1),
+    _labels = list(STEP_LABELS)
+    if st.session_state.get("input_mode") == "sketch":
+        _labels[1] = "2. Your Requirements"
+    _target = theme.render_step_nav(_labels, st.session_state["step"], int(st.session_state.get("max_step", 1) or 1),
                                     _step_available)
     if _target is not None:
         if st.session_state["step"] == 3:
@@ -136,11 +139,23 @@ def _uploads_signature(files: list) -> tuple:
 # STEP 1 — Project setup + upload
 # ---------------------------------------------------------------------------
 def step_1():
-    st.header("Step 1 \u00b7 Project Setup & Drawing Upload")
-    st.write("Enter the project details, choose the take-off specification and upload the complete drawing set "
-             "(architectural, structural, plumbing and electrical sheets).")
-
+    st.header("Step 1 \u00b7 Project Setup")
     pi: ProjectInputs = st.session_state["project_inputs"]
+
+    st.markdown("##### What do you have?")
+    modes = {"drawings": "\U0001f4d0 Architect's drawings (CAD PDF / drawing set)",
+             "sketch": "\u270f\ufe0f A sketch, a photo, or just an idea - guide me with questions"}
+    cur_mode = st.session_state.get("input_mode", "drawings")
+    input_mode = st.radio("How will you give us the house design?", list(modes), format_func=lambda k: modes[k],
+                          index=list(modes).index(cur_mode) if cur_mode in modes else 0, key="input_mode_radio",
+                          label_visibility="collapsed")
+    if input_mode == "sketch":
+        st.info("No drawings needed: in the next step you can upload a hand sketch or photo and/or describe the house; "
+                "the AI reads it (optional) and the app asks a few simple questions, then calculates every material. "
+                "Result: a concept-level take-off (about \u00b115-30%).")
+    else:
+        st.write("Enter the project details, choose the take-off specification and upload the complete drawing set "
+                 "(architectural, structural, plumbing and electrical sheets).")
 
     st.markdown("##### Units")
     unit_system_options = [units.SI, units.FPS]
@@ -271,62 +286,65 @@ def step_1():
     include_opt = s8.checkbox("Quantify optional items too", value=opts.include_options,
                               help="Also include Optional/Alternative/Premium materials in the take-off.")
 
-    st.markdown("##### Drawing Upload")
-    st.caption(
-        f"Upload the whole drawing set - up to {config.MAX_DRAWING_FILES} files (floor plans, sections, elevations, "
-        "foundation/structural sheets), as multi-page PDFs or images. CAD-exported PDFs are read directly, free and "
-        "without AI: sheets are sorted automatically, and room sizes, levels, schedules and wall lengths are taken "
-        f"from the drawing itself. Only the {config.MAX_TOTAL_IMAGES} most useful pages are ever sent to the AI, for "
-        "whatever is still missing."
-    )
-    raw_uploads = st.file_uploader(
-        "Upload drawing(s) (PDF, PNG, or JPG)",
-        type=config.SUPPORTED_FILE_TYPES,
-        accept_multiple_files=True,
-        key="drawing_uploader",
-    )
+    uploaded_files_with_tags = list(st.session_state.get("uploaded_files") or [])
+    if input_mode == "drawings":
+        st.markdown("##### Drawing Upload")
+        st.caption(
+            f"Upload the whole drawing set - up to {config.MAX_DRAWING_FILES} files (floor plans, sections, elevations, "
+            "foundation/structural sheets), as multi-page PDFs or images. CAD-exported PDFs are read directly, free and "
+            "without AI: sheets are sorted automatically, and room sizes, levels, schedules and wall lengths are taken "
+            f"from the drawing itself. Only the {config.MAX_TOTAL_IMAGES} most useful pages are ever sent to the AI, for "
+            "whatever is still missing."
+        )
+        raw_uploads = st.file_uploader(
+            "Upload drawing(s) (PDF, PNG, or JPG)",
+            type=config.SUPPORTED_FILE_TYPES,
+            accept_multiple_files=True,
+            key="drawing_uploader",
+        )
 
-    uploaded_files_with_tags = []
-    if raw_uploads:
-        if len(raw_uploads) > config.MAX_DRAWING_FILES:
-            st.warning(f"Only the first {config.MAX_DRAWING_FILES} files will be used - remove some to change which ones.")
-        for i, f in enumerate(raw_uploads[: config.MAX_DRAWING_FILES]):
-            fc1, fc2 = st.columns([3, 2])
-            fc1.caption(f"\U0001f4c4 {f.name}")
-            view_tag = fc2.selectbox(
-                "View type",
-                config.DRAWING_VIEW_TYPES,
-                index=min(i, len(config.DRAWING_VIEW_TYPES) - 1),
-                key=f"view_tag_{i}",
-                label_visibility="collapsed",
-            )
-            uploaded_files_with_tags.append({"name": f.name, "bytes": f.getvalue(), "view_tag": view_tag})
-    elif st.session_state.get("uploaded_files"):
-        # Streamlit empties a file_uploader when you navigate away from the
-        # step that shows it, so coming back to Step 1 would otherwise
-        # silently drop the drawings. Keep the previously attached files
-        # (with editable view tags) unless new files are uploaded or the
-        # user explicitly removes them.
-        st.caption("Previously attached drawing(s) are kept. Upload new files above to replace them.")
-        for i, f in enumerate(st.session_state["uploaded_files"]):
-            fc1, fc2 = st.columns([3, 2])
-            fc1.caption(f"\U0001f4ce {f['name']}")
-            tag = f.get("view_tag", config.DRAWING_VIEW_TYPES[-1])
-            view_tag = fc2.selectbox(
-                "View type",
-                config.DRAWING_VIEW_TYPES,
-                index=config.DRAWING_VIEW_TYPES.index(tag) if tag in config.DRAWING_VIEW_TYPES else len(config.DRAWING_VIEW_TYPES) - 1,
-                key=f"kept_view_tag_{i}",
-                label_visibility="collapsed",
-            )
-            uploaded_files_with_tags.append({"name": f["name"], "bytes": f["bytes"], "view_tag": view_tag})
-        if st.button("Remove attached drawing(s)"):
-            st.session_state["uploaded_files"] = []
-            clear_drawing_derived_state()
-            st.session_state["uploaded_signature"] = None
-            st.rerun()
+        uploaded_files_with_tags = []
+        if raw_uploads:
+            if len(raw_uploads) > config.MAX_DRAWING_FILES:
+                st.warning(f"Only the first {config.MAX_DRAWING_FILES} files will be used - remove some to change which ones.")
+            for i, f in enumerate(raw_uploads[: config.MAX_DRAWING_FILES]):
+                fc1, fc2 = st.columns([3, 2])
+                fc1.caption(f"\U0001f4c4 {f.name}")
+                view_tag = fc2.selectbox(
+                    "View type",
+                    config.DRAWING_VIEW_TYPES,
+                    index=min(i, len(config.DRAWING_VIEW_TYPES) - 1),
+                    key=f"view_tag_{i}",
+                    label_visibility="collapsed",
+                )
+                uploaded_files_with_tags.append({"name": f.name, "bytes": f.getvalue(), "view_tag": view_tag})
+        elif st.session_state.get("uploaded_files"):
+            # Streamlit empties a file_uploader when you navigate away from the
+            # step that shows it, so coming back to Step 1 would otherwise
+            # silently drop the drawings. Keep the previously attached files
+            # (with editable view tags) unless new files are uploaded or the
+            # user explicitly removes them.
+            st.caption("Previously attached drawing(s) are kept. Upload new files above to replace them.")
+            for i, f in enumerate(st.session_state["uploaded_files"]):
+                fc1, fc2 = st.columns([3, 2])
+                fc1.caption(f"\U0001f4ce {f['name']}")
+                tag = f.get("view_tag", config.DRAWING_VIEW_TYPES[-1])
+                view_tag = fc2.selectbox(
+                    "View type",
+                    config.DRAWING_VIEW_TYPES,
+                    index=config.DRAWING_VIEW_TYPES.index(tag) if tag in config.DRAWING_VIEW_TYPES else len(config.DRAWING_VIEW_TYPES) - 1,
+                    key=f"kept_view_tag_{i}",
+                    label_visibility="collapsed",
+                )
+                uploaded_files_with_tags.append({"name": f["name"], "bytes": f["bytes"], "view_tag": view_tag})
+            if st.button("Remove attached drawing(s)"):
+                st.session_state["uploaded_files"] = []
+                clear_drawing_derived_state()
+                st.session_state["uploaded_signature"] = None
+                st.rerun()
 
-    submitted = st.button("Continue to Drawing Analysis →", width="stretch", type="primary")
+    submitted = st.button("Continue to Drawing Analysis →" if input_mode == "drawings" else "Continue to your requirements →",
+                          width="stretch", type="primary")
 
     if submitted:
         st.session_state["project_inputs"] = pi.model_copy(update=dict(
@@ -369,6 +387,15 @@ def step_1():
             st.session_state["package_facts"] = None
             st.session_state["uploaded_images"] = []
             clear_dmto_review()
+        if input_mode != st.session_state.get("input_mode", "drawings"):
+            clear_drawing_derived_state()
+            st.session_state["uploaded_signature"] = None
+            st.session_state["brief"] = None
+        st.session_state["input_mode"] = input_mode
+        if input_mode == "sketch":
+            st.session_state["uploaded_files"] = []
+            go_to_step(2)
+            st.rerun()
         signature = _uploads_signature(uploaded_files_with_tags)
         if signature != st.session_state.get("uploaded_signature"):
             clear_drawing_derived_state()
@@ -758,7 +785,7 @@ def _render_structure_inputs(params, unit_system):
 
 
 def step_3():
-    st.header("Step 3 \u00b7 Review Drawing Data")
+    st.header("Step 3 \u00b7 Review Data")
     pi: ProjectInputs = st.session_state["project_inputs"]
     params = st.session_state["extracted_params"]
     unit_system = pi.unit_system
@@ -768,20 +795,20 @@ def step_3():
             st.error(e)
     facts = st.session_state.get("package_facts")
     n_rooms = sum(len(f.rooms) for f in facts.floors.values()) if (facts is not None and facts.has_facts()) else 0
-    if n_rooms:
+    if st.session_state.get("input_mode") == "sketch":
+        st.success(f"\u2705 Project created from your requirements: {len(st.session_state.get('dmto_rooms') or [])} rooms. "
+                   "Check the tabs below, then calculate.")
+    elif n_rooms:
         st.success(
             f"\u2705 Read from the drawings: {n_rooms} rooms with sizes, wall lengths by thickness, levels and "
             f"{len(st.session_state.get('drawing_filled') or [])} structural value(s). Check the tabs below - values marked "
             "\u26aa are defaults, \U0001f7e2 come from the drawings."
         )
-    else:
-        st.info("No CAD room data was read (scanned drawings or no upload). Rooms and counts below are generated from the "
-                "plot template / Step 3 values - please correct them.")
     if (st.session_state.get("used_ai") or st.session_state.get("drawing_filled") or pi.plot_marla) and params.extraction_warnings:
         with st.expander("\u26a0\ufe0f Extraction warnings", expanded=False):
             for w in params.extraction_warnings:
                 st.warning(w)
-    if params.overall_notes and st.session_state.get("used_ai"):
+    if params.overall_notes and st.session_state.get("used_ai") and st.session_state.get("input_mode") != "sketch":
         st.info(f"**AI notes:** {params.overall_notes}")
     mto_views.render_drawing_mode_banner()
     st.caption(mto_views.options_summary(st.session_state["dmto_options"]) + " (change in Step 1)")
@@ -933,7 +960,11 @@ step = st.session_state["step"]
 if step == 1:
     step_1()
 elif step == 2:
-    step_2()
+    if st.session_state.get("input_mode") == "sketch":
+        from ui.brief_views import render_brief_step
+        render_brief_step(st.session_state["project_inputs"], go_to_step, st.session_state.get("groq_api_key", ""))
+    else:
+        step_2()
 elif step == 3:
     step_3()
 elif step == 4:

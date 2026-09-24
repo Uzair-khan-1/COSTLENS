@@ -239,7 +239,7 @@ def compute(project: DetailedProject, kb: KnowledgeBase, scope: Optional[str] = 
             wq[wid] = _q.WIQty(0.0, ASSUMED, f"Calculation error: {exc}", selected=False)
 
     # When nothing was read from drawings (scans / no upload) no quantity may claim drawing-level confidence.
-    unread = getattr(p, "drawing_mode", "cad") != "cad"
+    unread = getattr(p, "drawing_mode", "cad") in ("scanned", "none")
     if unread:
         for w in wq.values():
             if w.confidence != USER:

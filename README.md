@@ -1,4 +1,4 @@
-# CostLens — *From plans to materials.* (v0.5.2)
+# CostLens — *From plans to materials.* (v0.6.0)
 
 A drawing-based **Material Take-Off (MTO)** tool for 5-10 marla houses in
 Pakistan. Upload the complete drawing set (CAD-exported PDFs work best); the
@@ -11,6 +11,15 @@ to Excel.
 **Costs are intentionally excluded in v0.5.0.** Pricing will be added as a
 separate step once the quantities are right (the legacy cost modules in
 `mto_boq/` and `export/` are kept, unused by the UI, for that step).
+
+### Two ways in
+
+* **Architect's drawings** (CAD PDF drawing set) - quantities are read from the drawings.
+* **No drawings - a sketch, a photo or just an idea** - the user uploads a hand sketch / photo and/or
+  describes the house; the AI (free Groq model, optional) reads it and asks follow-up questions, and the
+  app asks six plain-language question groups (plot, structure, rooms, services, finishes, outside).
+  The answers become a concept layout and the same full material take-off (concept accuracy about
+  ±15-30 %). Without an AI key, the description is read with simple rules and the questions still work.
 
 ### Workflow
 
@@ -544,6 +553,15 @@ lines). See **[DETAILED_MTO.md](DETAILED_MTO.md)**.
 ---
 
 ## 8. Changelog
+
+**v0.6.0 — guided route for users without drawings**
+- Step 1 asks "What do you have?": architect's drawings, or a sketch / photo / idea.
+- New Step 2 "Your House Requirements": upload a sketch or photo, describe the house, let the AI read
+  it (vision model) and answer its follow-up questions, then six simple question groups. Missing
+  essentials (stairs, kitchen, a bath per floor) are added automatically and shown.
+- The brief becomes rooms, doors & windows, concept floors (walls from shared room edges, calibrated
+  on a real 5 marla set) and the user's answers (AC rooms, tanks, sewer, boundary, corner plot ...).
+- Concept results are clearly labelled in the app and the Excel.
 
 **v0.5.2 — trustworthy results**
 - Scanned drawings / photos are detected: a clear warning in Steps 2-5 and in

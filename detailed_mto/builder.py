@@ -68,7 +68,8 @@ def classify_room(name: str, kind: str, kb: KnowledgeBase) -> str:
 def build_project(project_inputs, params, kb: KnowledgeBase, facts=None, files: Optional[list] = None,
                   scan: Optional[ScanResult] = None, options: Optional[Options] = None,
                   rooms_override: Optional[list] = None, openings_override: Optional[list] = None,
-                  overrides: Optional[dict] = None, drawing_mode: Optional[str] = None) -> DetailedProject:
+                  overrides: Optional[dict] = None, drawing_mode: Optional[str] = None,
+                  floors_override: Optional[list] = None) -> DetailedProject:
     """rooms_override / openings_override: user-reviewed lists of Room / OpeningGroup that replace the
     drawing-derived ones BEFORE counts that depend on them (baths, kitchens, points ...) are derived."""
     pi = project_inputs
@@ -129,7 +130,12 @@ def build_project(project_inputs, params, kb: KnowledgeBase, facts=None, files: 
     n_storeys_default = int(getattr(pi, "plot_storeys", 2) or 2)
     wall_t_in = (getattr(pi, "wall_thickness_mm", 228.6) or 228.6) / 25.4
     h_floor = p.v("H_FLOOR")
-    if storey_keys:
+    if floors_override:
+        # concept floors from a sketch / guided brief: heights always follow the current H_FLOOR / H_MUMTY
+        for f in floors_override:
+            p.floors.append(Floor(f.key, f.name, f.covered_sft, f.ext_perimeter_ft, f.wall9_len_ft, f.wall45_len_ft,
+                                  p.v("H_MUMTY") if f.is_mumty else h_floor, f.is_mumty, f.source, f.confidence))
+    elif storey_keys:
         for k in storey_keys:
             ff = fx.floors[k]
             w9 = sum(L for t, L in (ff.thickness_breakdown or {}).items() if t >= 7.0)
@@ -155,7 +161,7 @@ def build_project(project_inputs, params, kb: KnowledgeBase, facts=None, files: 
     second = fact("plot", "covered_second_sqft")
     roof_f = fx.floors.get("roof") if fx is not None else None
     mumty_area = second[0] if second else (180.0 if len(p.floors) >= 1 else 0.0)
-    if mumty_area and mumty_area < 400:
+    if mumty_area and mumty_area < 400 and not floors_override:
         per = 4 * math.sqrt(mumty_area) * 1.05
         p.floors.append(Floor("roof", "Mumty", mumty_area, per, per, 0.0, p.v("H_MUMTY"), is_mumty=True,
                               source=second[1] if second else "Default", confidence=HIGH if second else ASSUMED))
@@ -430,7 +436,7 @@ def build_project(project_inputs, params, kb: KnowledgeBase, facts=None, files: 
     p.set("RWH_N", "Rainwater recharge wells", 1 if p.options.include_rwh else 0, "Nos", "External",
           "CDA requirement (not in drawings)", ASSUMED)
 
-    if p.drawing_mode != "cad":
+    if p.drawing_mode in ("scanned", "none"):
         # Nothing was READ from drawings: everything except the user's own edits is a template /
         # default value and must be shown (and exported) as such.
         for prm in p.params.values():

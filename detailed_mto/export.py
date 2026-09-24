@@ -457,6 +457,16 @@ def _build_summary(ws, result: DetailedResult, mats: List[MaterialLine], sched_r
             ).font = _font(italic=True, color="595959")
 
     r = 4
+    if p.drawing_mode == "sketch":
+        c = ws.cell(row=r, column=2, value="CONCEPT ESTIMATE from your sketch / requirements (no architectural drawings) - "
+                                          "expect about +/-15-30% on the main materials. Re-run with the architect's drawings "
+                                          "before final ordering.")
+        c.font = _font(size=11, bold=True, color="7F6000")
+        c.fill = PatternFill("solid", fgColor="FFE699")
+        c.alignment = Alignment(wrap_text=True, vertical="center")
+        ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=9)
+        ws.row_dimensions[r].height = 34
+        r += 1
     if p.drawing_mode in ("scanned", "none"):
         msg = ("WARNING: the uploaded drawings could not be read (scanned images/photos). Quantities are for a TYPICAL house "
                "of this plot size, not for these drawings - every line is an assumption." if p.drawing_mode == "scanned" else

@@ -51,6 +51,11 @@ def init_session_state():
         "dmto_ver": 0,  # bumps the review-table widget keys after edits are saved
         "dmto_result": None,  # detailed_mto.engine.DetailedResult
         "dmto_xlsx": None,  # (result id, bytes) cache of the export
+        "dmto_floors": None,  # concept floors (list of Floor) from the guided brief route
+        # --- guided route for users without drawings ---
+        "input_mode": "drawings",  # "drawings" (architect's CAD/scans) | "sketch" (sketch / description + questions)
+        "brief": None,  # detailed_mto.brief.ProjectBrief
+        "sketch_files": [],
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -84,6 +89,7 @@ def reset_project():
         "max_step",
         "dmto_options",
         *DMTO_DERIVED_KEYS,
+        *BRIEF_KEYS,
     ]
     for k in keys_to_clear:
         if k in st.session_state:
@@ -96,12 +102,14 @@ def reset_project():
     st.session_state["step"] = 1
 
 
-DMTO_DERIVED_KEYS = ["dmto_scan", "dmto_rooms", "dmto_openings", "dmto_overrides", "dmto_result", "dmto_xlsx"]
+DMTO_DERIVED_KEYS = ["dmto_scan", "dmto_rooms", "dmto_openings", "dmto_overrides", "dmto_result", "dmto_xlsx", "dmto_floors"]
+BRIEF_KEYS = ["input_mode", "brief", "brief_ver", "sketch_files", "brief_ai_json", "brief_ai_got", "brief_used_ai",
+              "brief_rooms_live", "sketch_uploader", "brief_added"]
 
 
 def clear_dmto_review() -> None:
     """Forget reviewed rooms/openings/counts so they are re-seeded from the (new) drawing analysis."""
-    for k in ["dmto_rooms", "dmto_openings", "dmto_overrides", "dmto_result", "dmto_xlsx"]:
+    for k in ["dmto_rooms", "dmto_openings", "dmto_overrides", "dmto_result", "dmto_xlsx", "dmto_floors"]:
         if k in st.session_state:
             del st.session_state[k]
     st.session_state["dmto_ver"] = st.session_state.get("dmto_ver", 0) + 1

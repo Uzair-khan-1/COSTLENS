@@ -35,6 +35,8 @@ def kb():
 
 # ---------------------------------------------------------------- project building
 def drawing_mode() -> str:
+    if st.session_state.get("input_mode") == "sketch":
+        return "sketch"
     facts = st.session_state.get("package_facts")
     if facts is not None and facts.has_facts():
         return "cad"
@@ -46,7 +48,8 @@ def _build(pi, params, room_rows=None, opening_rows=None, overrides=None):
                          options=st.session_state["dmto_options"],
                          rooms_override=rows_to_rooms(room_rows) if room_rows is not None else None,
                          openings_override=rows_to_openings(opening_rows) if opening_rows is not None else None,
-                         overrides=overrides, drawing_mode=drawing_mode())
+                         overrides=overrides, drawing_mode=drawing_mode(),
+                         floors_override=st.session_state.get("dmto_floors") if drawing_mode() == "sketch" else None)
 
 
 def seed_review_rows(pi, params) -> None:
@@ -77,6 +80,7 @@ def input_signature(pi, params) -> str:
                  json.dumps(st.session_state.get("dmto_openings"), sort_keys=True, default=str),
                  json.dumps(st.session_state.get("dmto_overrides") or {}, sort_keys=True, default=str),
                  repr(st.session_state.get("dmto_options")), repr(st.session_state.get("uploaded_signature")),
+                 repr(st.session_state.get("dmto_floors")),
                  drawing_mode()):
         h.update(part.encode())
     return h.hexdigest()
@@ -149,9 +153,14 @@ def render_drawing_mode_banner(mode: Optional[str] = None) -> None:
             "\u26a0\ufe0f **Your drawings could not be read** - they are scanned images or photos, so no dimensions, "
             "rooms or schedules were taken from them. The quantities are based on a **typical house for the chosen plot "
             "size**, not on your drawings, and every line is marked as assumed. To get real quantities: use "
-            "**'Also ask the AI'** in Step 2 (needs a Groq key), or enter your rooms, doors/windows and key dimensions in "
-            "Step 3, or upload the CAD-exported PDF from the architect."
+            "**'Also ask the AI'** in Step 2 (needs a Groq key), switch to the **guided sketch route** in Step 1 "
+            "(answer a few questions about your house), enter your rooms, doors/windows and key dimensions in Step 3, "
+            "or upload the CAD-exported PDF from the architect."
         )
+    elif mode == "sketch":
+        st.info("\u270f\ufe0f **Concept take-off from your sketch & answers.** Walls, floor areas and openings come from a concept "
+                "layout of your rooms, so expect roughly \u00b115-30% on the main materials. Check the rooms and sizes in "
+                "Step 3; with the architect's drawings later, re-run for procurement-grade quantities.")
     elif mode == "none":
         st.warning("No drawings uploaded - quantities are based on a typical house for the chosen plot size. "
                    "Enter your rooms, doors/windows and key dimensions in Step 3 for real quantities.")

@@ -113,3 +113,17 @@ ui/mto_views.py                      Step 2-5 views
 scripts/validate_knowledge_base.py   DB validation CLI
 tests/test_detailed_mto.py           17 tests
 ```
+
+
+## Guided route (no drawings)
+
+`detailed_mto/brief.py` holds the ProjectBrief (plot, structure, rooms, services, outside) and turns it
+into the engine's inputs: room rows, door/window rows, concept floors and parameter overrides.
+`ai/sketch_reader.py` asks the free Groq vision/text model for a fixed JSON reading of the sketch and
+description plus follow-up questions; `parse_description()` is the rule-based fallback without a key.
+`complete_programme()` adds rooms every house needs. The UI is `ui/brief_views.py` (Step 2 in sketch mode).
+
+Concept floor geometry: covered area = room areas x 1.28; wall centre-line length = (sum of room perimeters
++ external perimeter) / 2; 25 % of internal walls 9" in load-bearing houses (15 % in RCC frames) - calibrated on
+the 31-sheet 5 marla set (total wall length within 1 %). Tune these in `_floor_geometry()` as more real projects
+are compared.
