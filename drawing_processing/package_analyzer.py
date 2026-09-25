@@ -846,10 +846,27 @@ def _dedupe_views(views: List[View], lines: List[TextLine]) -> List[View]:
 # --------------------------------------------------------------------------
 
 
-def analyze_package(files: List[dict], plot_width_hint_ft: Optional[float] = None, unit_system: str = "FPS") -> PackageFacts:
+def analyze_package(files: List[dict], plot_width_hint_ft: Optional[float] = None, unit_system: str = "FPS",
+                    progress=None) -> PackageFacts:
     """files: [{"name", "bytes", "view_tag"}]. Pass 1 reads the text of
     every page (cheap) and sorts the sheets; pass 2 measures geometry only
-    on the best plan sheet of each floor."""
+    on the best plan sheet of each floor.
+    progress: optional callable(fraction 0-1, message) for a progress bar."""
+    def _tick(frac, msg):
+        if progress is not None:
+            try:
+                progress(min(max(frac, 0.0), 1.0), msg)
+            except Exception:  # noqa: BLE001 - progress reporting must never break the analysis
+                pass
+
+    total_pages = 0
+    for f in files:
+        if f["name"].lower().endswith(".pdf"):
+            try:
+                total_pages += pymupdf.open(stream=f["bytes"], filetype="pdf").page_count
+            except Exception:  # noqa: BLE001
+                pass
+    total_pages = max(min(total_pages, MAX_PACKAGE_PAGES), 1)
     facts = PackageFacts()
     pages_read = 0
     plan_candidates: Dict[str, list] = {}  # floor -> [(rank, -n_dims, fi, pi, view, lines, scale)]
@@ -871,6 +888,7 @@ def analyze_package(files: List[dict], plot_width_hint_ft: Optional[float] = Non
             if pages_read >= MAX_PACKAGE_PAGES:
                 break
             pages_read += 1
+            _tick(0.6 * pages_read / total_pages, f"Reading sheet {pages_read} of {total_pages} ({f['name']})")
             lines = _text_lines(page)
             full_text = "\n".join(ln.text for ln in lines)
             src = f"{f['name']} p{pi_ + 1}"
@@ -958,7 +976,9 @@ def analyze_package(files: List[dict], plot_width_hint_ft: Optional[float] = Non
     # ---- pass 2: geometry on the best plan sheet per floor --------------
     plot_w = facts.plot.get("plot_width_ft", (plot_width_hint_ft, ""))[0]
     plot_area = facts.plot.get("plot_area_sqft", (None, ""))[0]
-    for floor, cands in plan_candidates.items():
+    _n_floors = max(len(plan_candidates), 1)
+    for _k, (floor, cands) in enumerate(plan_candidates.items()):
+        _tick(0.6 + 0.4 * _k / _n_floors, f"Measuring walls and rooms: {FLOOR_NAMES.get(floor, floor)}")
         rank, _, fi, pi_, view, vlines, scale, src, n_views = min(cands, key=lambda c: (c[0], c[1]))
         facts.best_plan_page[floor] = (fi, pi_)
         ff = FloorFacts(floor=floor, source=f"{view.title.title()} ({src})")
@@ -1068,6 +1088,7 @@ def analyze_package(files: List[dict], plot_width_hint_ft: Optional[float] = Non
         doc.close()
 
     _cross_check(facts, unit_system)
+    _tick(1.0, "Drawing analysis complete")
     return facts
 
 

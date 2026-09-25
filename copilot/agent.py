@@ -257,7 +257,14 @@ def run_agent(api_key: str, state: ProjectState, history: List[dict], user_text:
         except Exception as exc:  # noqa: BLE001 - try the fallback model, then report
             last_err = str(exc)
             continue
-    return AgentReply("", box.proposals, log, error=f"The AI copilot could not be reached ({last_err[:200]}).")
+    low = last_err.lower()
+    if "429" in low or "rate limit" in low or "rate_limit" in low or "quota" in low:
+        msg = "The free AI limit has been reached for now (Groq rate limit) - please try again in a minute."
+    elif "401" in low or "invalid api key" in low or "authentication" in low:
+        msg = "The Groq API key was rejected - check the key in the sidebar."
+    else:
+        msg = f"The AI copilot could not be reached ({last_err[:160]})."
+    return AgentReply("", box.proposals, log, error=msg)
 
 
 # ---------------------------------------------------------------------------

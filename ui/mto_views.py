@@ -216,6 +216,27 @@ def render_rooms_editor() -> List[dict]:
     return rows
 
 
+def render_concept_plan(room_rows: List[dict], expanded: bool = False) -> None:
+    """Schematic plan per floor (sketch route) so the user can see the rooms on the plot."""
+    from detailed_mto.concept_plan import floor_svg
+    pi = st.session_state.get("project_inputs")
+    width = float(getattr(pi, "plot_width_ft", 0) or 0) or 30.0
+    ov = st.session_state.get("dmto_overrides") or {}
+    width = float(ov.get("PLOT_W", width))
+    floors = [f for f in ("ground", "first", "second", "roof") if any(r.get("Floor") == f for r in room_rows)]
+    if not floors:
+        return
+    with st.expander("\U0001f5fa\ufe0f Concept plan (schematic)", expanded=expanded):
+        st.caption("A simple arrangement of your rooms on the plot width, to check nothing is missing or oversized. "
+                   "It is not an architectural design - quantities use the room sizes, not this layout.")
+        cols = st.columns(min(len(floors), 3))
+        names = {"ground": "Ground floor", "first": "First floor", "second": "Second floor", "roof": "Mumty / roof"}
+        for i, f in enumerate(floors):
+            with cols[i % len(cols)]:
+                svg = floor_svg([r for r in room_rows if r.get("Floor") == f], width, names[f])
+                st.markdown(svg, unsafe_allow_html=True)
+
+
 def render_openings_editor() -> List[dict]:
     df = pd.DataFrame(st.session_state["dmto_openings"] or [], columns=OPENING_COLS)
     st.caption("Doors come from the chogath/door schedule when the drawings have one. Window WIDTHS are rarely given "

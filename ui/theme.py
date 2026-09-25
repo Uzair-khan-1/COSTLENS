@@ -180,6 +180,12 @@ h1, h2, h3 {{ color: {config.BRAND_NAVY}; font-weight: 700; }}
 .st-key-cl_step_nav .stButton > button[kind="primary"] p {{ color: {config.BRAND_NAVY} !important; }}
 .st-key-cl_step_nav .stButton > button:disabled {{ opacity: 0.35; }}
 [data-testid="stMain"], section.main {{ overflow-anchor: none; }}
+/* light buttons inside the dark sidebar (download / file uploader) need dark text */
+[data-testid="stSidebar"] .stDownloadButton button p,
+[data-testid="stSidebar"] [data-testid="stFileUploader"] button,
+[data-testid="stSidebar"] [data-testid="stFileUploader"] button p,
+[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] span,
+[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] small {{ color: {config.BRAND_NAVY} !important; }}
 .st-key-cl_scroll_top {{ height: 0 !important; min-height: 0 !important; overflow: hidden; margin: 0 !important; padding: 0 !important; }}
 
 /* ---------------------------------------------------------------- *

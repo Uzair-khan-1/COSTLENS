@@ -71,6 +71,23 @@ KEY_CARDS = [  # (label, ids, unit, divisor, roundup digits)
 ]
 
 
+def _app_version() -> str:
+    try:
+        import config
+        return config.APP_VERSION
+    except Exception:  # noqa: BLE001
+        return "?"
+
+
+def _kb_id() -> str:
+    try:
+        from knowledge import load_knowledge_base
+        kb = load_knowledge_base()
+        return f"v{kb.version} #{kb.file_hash}"
+    except Exception:  # noqa: BLE001
+        return "?"
+
+
 def benchmarks_for(project):
     """Load-bearing houses (strip foundations) carry less steel than RCC frames."""
     out = []
@@ -453,7 +470,8 @@ def _build_summary(ws, result: DetailedResult, mats: List[MaterialLine], sched_r
     ws.cell(row=2, column=2, value=" | ".join(x for x in [p.project_name, p.client, p.location] if x)).font = \
         _font(size=11, bold=True, color=TEAL)
     ws.cell(row=3, column=2, value=f"Scope: {result.scope}   |   Finish: {p.options.finish_tier}   |   "
-                                   f"Generated {datetime.now().strftime('%d %b %Y %H:%M')}   |   Quantities only - no costs"
+                                   f"Generated {datetime.now().strftime('%d %b %Y %H:%M')}   |   Quantities only - no costs   |   "
+                                   f"App v{_app_version()}, material database {_kb_id()}"
             ).font = _font(italic=True, color="595959")
 
     r = 4

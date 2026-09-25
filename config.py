@@ -14,10 +14,13 @@ from pathlib import Path
 APP_NAME = "CostLens"
 APP_TAGLINE = "From plans to materials."
 APP_FULL_NAME = "CostLens - Drawing-based Material Take-Off for 5-10 marla houses"
-APP_VERSION = "0.7.0"
+APP_VERSION = "0.8.0"
 
 # Brand assets (see assets/generate_logo.py to regenerate/tweak).
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+# Local project library (saved *.costlens.json files). On Streamlit Community Cloud this folder is
+# not permanent - users should also download their project file.
+PROJECTS_DIR = Path(__file__).resolve().parent / "projects"
 LOGO_ICON_PATH = ASSETS_DIR / "costlens_icon.png"
 LOGO_HORIZONTAL_PATH = ASSETS_DIR / "costlens_logo.png"
 # White wordmark variant for use on the app's dark-navy sidebar - the

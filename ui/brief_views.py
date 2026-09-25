@@ -218,6 +218,9 @@ def render_brief_step(pi, go_to_step, groq_key: str) -> None:
         beds = sum(1 for r in rooms_now if r.room_type == "Bedroom")
         baths = sum(1 for r in rooms_now if r.room_type == "Bathroom")
         r3.metric("Bedrooms / baths", f"{beds} / {baths}")
+        from ui.mto_views import render_concept_plan
+        render_concept_plan([{"Floor": r.floor, "Room": r.name, "Room type": r.room_type, "Length (ft)": r.length_ft,
+                              "Width (ft)": r.width_ft} for r in rooms_now], expanded=False)
         orphan = [r for r in rooms_now if r.floor not in FLOORS[: b.storeys]]
         if orphan:
             st.warning(f"{len(orphan)} room(s) are on a floor above the number of storeys and will be ignored.")

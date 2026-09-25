@@ -1,4 +1,4 @@
-# CostLens — *From plans to materials.* (v0.7.0)
+# CostLens — *From plans to materials.* (v0.8.0)
 
 A drawing-based **Material Take-Off (MTO)** tool for 5-10 marla houses in
 Pakistan. Upload the complete drawing set (CAD-exported PDFs work best); the
@@ -20,6 +20,24 @@ separate step once the quantities are right (the legacy cost modules in
   app asks six plain-language question groups (plot, structure, rooms, services, finishes, outside).
   The answers become a concept layout and the same full material take-off (concept accuracy about
   ±15-30 %). Without an AI key, the description is read with simple rules and the questions still work.
+
+### Code map
+
+```
+app.py                   page setup, sidebar, step router (thin)
+ui/steps/                setup.py (1) - analysis.py (2) - review.py (3) - takeoff.py (4) - export.py (5)
+ui/sidebar.py            step navigation, project save / open, new project
+ui/brief_views.py        Step 2 for users without drawings (sketch + questions)
+ui/mto_views.py          review tables, take-off views, stale-result handling
+ui/copilot_views.py      most important questions, take-off check, copilot chat, undo, scenarios
+detailed_mto/            take-off engine: builder, quantities, engine, validation, brief, exports,
+                         shopping list (text/PDF), concept plan (SVG)
+copilot/                 agent tools, analysis (sensitivity, checker, what-if), Groq tool loop
+persistence/             project files (.costlens.json) and the local project library
+knowledge/               Master Material Database loader (data/master_material_database.xlsx)
+drawing_processing/      CAD PDF reading (text + vectors), label scan, AI page selection
+mto_boq/, export/        legacy cost modules - unused by the UI, kept for the pricing step
+```
 
 ### Workflow
 
@@ -553,6 +571,22 @@ lines). See **[DETAILED_MTO.md](DETAILED_MTO.md)**.
 ---
 
 ## 8. Changelog
+
+**v0.8.0 — save/open projects, sharing, speed, refactor**
+- **Projects:** download a project file (.costlens.json - plain JSON, optionally with the drawings) and
+  open it later exactly as it was (rooms, edits, drawing facts, options, scenarios, chat); a local project
+  library (save / open / delete).
+- **Sharing:** shopping list as WhatsApp-ready text (optionally only some trades, e.g. per supplier),
+  one-click "Open in WhatsApp", and a PDF shopping list.
+- **Speed:** drawing analysis shows a per-sheet progress bar and is cached by file content (re-uploading
+  the same set is instant).
+- **Sketch route:** schematic concept plan per floor to check the rooms before calculating.
+- **Easier Step 3:** the technical tables are labelled "Advanced"; tabs remember the selection.
+- **Copilot:** clear messages for the free AI limit and for a rejected key.
+- **Traceability:** every Excel export states the app version and the material-database version + hash.
+- **Refactor:** app.py (1,000 lines) split into one module per step + sidebar; analyzer gets a progress hook.
+- Known limit (needs real project data): RCC-frame plot templates give high steel on 5-7 marla
+  (16-20 columns, 5'x5'x1'-6" footings); the take-off check flags it with the reason.
 
 **v0.7.0 — agentic copilot (first slice)**
 - **Most important questions** (Step 3): every assumed input is tested against the take-off; only the

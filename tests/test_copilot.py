@@ -154,7 +154,7 @@ def test_agent_step_limit_and_api_failure(state):
     class Boom:
         chat = NS(completions=NS(create=lambda **kw: (_ for _ in ()).throw(RuntimeError("429 rate limit"))))
     reply = run_agent("key", state, [], "hi", client=Boom())
-    assert reply.error and "429" in reply.error
+    assert reply.error and "limit" in reply.error  # friendly rate-limit message
 
 
 def test_toolbox_read_tools(state):
@@ -163,3 +163,10 @@ def test_toolbox_read_tools(state):
     assert box.call("list_rooms", {"floor": "ground"})
     assert box.call("lookup_database", {"query": "bricks per cft"})
     assert "error" in box.call("explain", {"wrong_arg": 1})
+
+
+def test_agent_reports_bad_key(state):
+    class Unauthorized:
+        chat = NS(completions=NS(create=lambda **kw: (_ for _ in ()).throw(RuntimeError("Error code: 401 - invalid api key"))))
+    reply = run_agent("key", state, [], "hi", client=Unauthorized())
+    assert "key was rejected" in reply.error

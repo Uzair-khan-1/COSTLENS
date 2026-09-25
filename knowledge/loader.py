@@ -126,6 +126,7 @@ class KnowledgeBase:
     scope_names: List[str]
     stages: Dict[str, str]
     version: str = "1.0"
+    file_hash: str = ""  # first 12 hex of SHA-256 of the workbook - printed on every export
 
     # convenience -----------------------------------------------------------
     def k(self, coeff_id: str) -> float:
@@ -336,8 +337,11 @@ def _load_cached(path: str, _mtime: float) -> KnowledgeBase:
     stages = {_s(r[0]): _s(r[1]) for r in _rows(wb["Stages"])}
     wb.close()
 
+    import hashlib
+    with open(path, "rb") as fh:
+        digest = hashlib.sha256(fh.read()).hexdigest()[:12]
     kb = KnowledgeBase(path, materials, work_items, recipes, coefficients, meta, mixes, wastage, rooms,
-                       scope_map, scope_names, stages)
+                       scope_map, scope_names, stages, file_hash=digest)
     validate_knowledge_base(kb)
     return kb
 
