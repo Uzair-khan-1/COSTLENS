@@ -394,6 +394,7 @@ def extract_building_params(
     wall_material: str = rules.DEFAULT_WALL_MATERIAL,
     unit_system: str = "SI",
     fallback_params: Optional[ExtractedBuildingParams] = None,
+    keys=None,
 ) -> Tuple[ExtractedBuildingParams, str, List[str]]:
     """Returns (params, raw_model_output_text, error_messages).
 
@@ -415,6 +416,7 @@ def extract_building_params(
             system_prompt=SYSTEM_PROMPT,
             user_prompt=user_prompt,
             images=images,
+            keys=keys,
         )
     except GroqClientError as exc:
         logger.warning("Groq call failed, using defaults: %s", exc)

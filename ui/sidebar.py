@@ -32,6 +32,19 @@ def render_sidebar() -> None:
                  "analysis and the AI copilot. Kept in session memory only. Leave blank to use the app's configured key, if any.",
         )
         st.session_state["groq_api_key"] = (user_key or "").strip() or (config.get_secret("GROQ_API_KEY", "") or "")
+        with st.expander("\u2795 More free AI providers (optional)"):
+            st.caption("Used automatically when the free Groq limit is reached (or instead of Groq). "
+                       "Gemini has much larger free limits and reads drawings well; note its free tier may use inputs "
+                       "to improve Google's models.")
+            gem = st.text_input("Google Gemini API key", type="password", key="user_gemini_api_key",
+                                help="Free key from https://aistudio.google.com/apikey")
+            orr = st.text_input("OpenRouter API key", type="password", key="user_openrouter_api_key",
+                                help="Free key from https://openrouter.ai/keys (uses ':free' models)")
+        st.session_state["gemini_api_key"] = (gem or "").strip() or (config.get_secret("GEMINI_API_KEY", "") or "")
+        st.session_state["openrouter_api_key"] = (orr or "").strip() or (config.get_secret("OPENROUTER_API_KEY", "") or "")
+        active = [n for n, k in (("Groq", "groq_api_key"), ("Gemini", "gemini_api_key"), ("OpenRouter", "openrouter_api_key"))
+                  if st.session_state.get(k)]
+        st.caption("AI: " + (" \u2192 ".join(active) if active else "off (built-in rules only)"))
 
         st.markdown("---")
         st.markdown("### Progress")

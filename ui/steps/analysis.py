@@ -10,6 +10,7 @@ import streamlit as st
 from PIL import Image
 
 import config
+from ai.llm import keys_from_mapping
 from ai.extraction import default_building_params, extract_building_params
 from detailed_mto import scan_pdf_bytes
 from drawing_processing.image_processor import clean_drawing_image, estimate_is_drawing_like
@@ -242,17 +243,18 @@ def step_2():
             else "Nothing could be read from these drawings - Step 3 will start from a typical house that you must correct.")
     with c2:
         analyze_clicked = st.button("\U0001f9e0 Also ask the AI for missing values", width="stretch",
-                                    help="Optional. Sends the most useful pages to the Groq vision model for values not read from the drawings.")
+                                    help="Optional. Sends the most useful pages (automatically resized to fit the free AI limits) to the vision model "
+                                         "for values not read from the drawings.")
 
     if skip_clicked:
         _finish_step_2(base_params(pi), used_ai=False)
         st.rerun()
 
     if analyze_clicked:
-        if not st.session_state["groq_api_key"]:
+        if not keys_from_mapping(st.session_state).any():
             st.error(
-                "No Groq API key is configured. Paste your own free key in the sidebar "
-                "(console.groq.com/keys), or use 'Continue without AI' - values read from the drawings are still used."
+                "No AI key is configured. Paste a free Groq key (console.groq.com/keys) or a Gemini key in the sidebar, "
+                "or continue with the drawing data - values read from the drawings are still used."
             )
         elif not images:
             st.error("No pages to send to the AI - use 'Continue without AI'.")
@@ -270,6 +272,7 @@ def step_2():
                     wall_material=pi.wall_material,
                     unit_system=pi.unit_system,
                     fallback_params=base_params(pi),
+                    keys=keys_from_mapping(st.session_state),
                 )
             st.session_state["raw_ai_response"] = raw_text
             st.session_state["ai_errors"] = errors

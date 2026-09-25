@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
@@ -24,22 +25,11 @@ from copilot.state import ROOM_TYPES, ProjectState, apply_changes, build, run
 MAX_STEPS = 6
 TOOL_MODELS = [getattr(config, "GROQ_TOOL_MODEL", "openai/gpt-oss-120b"), "llama-3.3-70b-versatile"]
 
-CHANGE_SCHEMA = {
+# Tool schemas are kept SHORT on purpose: they are re-sent on every step and free tiers limit tokens per minute.
+CHANGE_SCHEMA = {  # fields per change type are listed in the system prompt (keeps every request small)
     "type": "object",
-    "properties": {
-        "type": {"type": "string", "enum": ["set_param", "reset_param", "set_option", "update_room", "add_room", "remove_room",
-                                            "update_opening", "add_opening"]},
-        "key": {"type": "string", "description": "input key for set_param/reset_param, e.g. N_AC, H_FLOOR, N_LIGHT"},
-        "value": {"description": "new value (number for set_param; option value for set_option)"},
-        "name": {"type": "string", "description": "option name for set_option, or door/window group name for *_opening"},
-        "room": {"type": "string", "description": "room name as listed by list_rooms"},
-        "floor": {"type": "string", "enum": ["ground", "first", "second", "roof"]},
-        "room_type": {"type": "string", "enum": ROOM_TYPES},
-        "length_ft": {"type": "number"}, "width_ft": {"type": "number"}, "height_ft": {"type": "number"},
-        "qty": {"type": "integer"}, "kind": {"type": "string", "enum": ["door", "window", "ventilator"]},
-        "nth": {"type": "integer", "description": "which room when several have the same name (1 = first)"},
-        "all": {"type": "boolean"}, "new_name": {"type": "string"}, "external": {"type": "boolean"},
-    },
+    "properties": {"type": {"type": "string", "enum": ["set_param", "reset_param", "set_option", "update_room", "add_room",
+                                                       "remove_room", "update_opening", "add_opening"]}},
     "required": ["type"],
 }
 
@@ -50,27 +40,23 @@ def _fn(name, desc, props=None, required=None):
                                                             "required": required or []}}}
 
 
+_S = {"type": "string"}
 TOOLS = [
-    _fn("get_project_summary", "Floors, room counts, structure, options and the main material totals of the current project."),
-    _fn("list_rooms", "Rooms with floor, type and size (ft).", {"floor": {"type": "string"}}),
-    _fn("list_openings", "Door / window / ventilator groups with sizes and quantities."),
-    _fn("list_inputs", "Key inputs (counts & dimensions) with value, unit, source and confidence.",
-        {"group": {"type": "string", "description": "e.g. Electrical, Plumbing, Levels, Structure, Foundation, External"},
-         "only_assumed": {"type": "boolean"}}),
-    _fn("explain", "Explain how a material quantity was calculated. 'what' = Mat_ID, material words, or a main group "
-                   "(steel, cement, bricks, sand, crush, tiles, paint, wiring).", {"what": {"type": "string"}}, ["what"]),
-    _fn("find_material", "Search the material schedule by words; returns Mat_IDs and quantities.", {"query": {"type": "string"}},
-        ["query"]),
-    _fn("check_takeoff", "Review the take-off: unusual ratios, inconsistencies, missing items, assumptions, with suggested fixes."),
-    _fn("most_important_questions", "The assumed inputs that change the quantities most - what to confirm first."),
-    _fn("compare_what_if", "Run the take-off with some changes WITHOUT applying them and show what changes.",
-        {"changes": {"type": "array", "items": CHANGE_SCHEMA}}, ["changes"]),
-    _fn("propose_changes", "Prepare changes to the project for the user to Apply (validated, with the effect on quantities). "
-                           "Use this whenever the user asks to change/add/remove something.",
-        {"changes": {"type": "array", "items": CHANGE_SCHEMA}, "reason": {"type": "string"}}, ["changes"]),
-    _fn("material_saving_options", "Try common alternatives (block walls, economy finish, fewer ACs ...) and rank by material saved."),
-    _fn("lookup_database", "Search the material database notes, specifications and engineering coefficients (with sources).",
-        {"query": {"type": "string"}}, ["query"]),
+    _fn("get_project_summary", "Floors, rooms, structure, options, main material totals."),
+    _fn("list_rooms", "Rooms with floor, type, size.", {"floor": _S}),
+    _fn("list_openings", "Door/window groups with sizes and qty."),
+    _fn("list_inputs", "Counts & dimensions with value, source, confidence.", {"group": _S, "only_assumed": {"type": "boolean"}}),
+    _fn("explain", "How a quantity was calculated. what = Mat_ID, words, or steel/cement/bricks/sand/crush/tiles/paint/wiring.",
+        {"what": _S}, ["what"]),
+    _fn("find_material", "Search materials by words.", {"query": _S}, ["query"]),
+    _fn("check_takeoff", "Problems, odd ratios, missing items, with fixes."),
+    _fn("most_important_questions", "Assumed inputs that change quantities most."),
+    _fn("compare_what_if", "Effect of changes WITHOUT applying them.", {"changes": {"type": "array", "items": CHANGE_SCHEMA}},
+        ["changes"]),
+    _fn("propose_changes", "Prepare changes for the user to Apply. Use for any change request.",
+        {"changes": {"type": "array", "items": CHANGE_SCHEMA}, "reason": _S}, ["changes"]),
+    _fn("material_saving_options", "Try alternatives and rank by material saved."),
+    _fn("lookup_database", "Search material notes/specs and engineering coefficients.", {"query": _S}, ["query"]),
 ]
 
 SYSTEM_PROMPT = f"""You are the CostLens estimator copilot for 5-10 marla houses in Pakistan (Islamabad/Rawalpindi practice).
@@ -80,6 +66,8 @@ Rules:
 - Every number you state must come from a tool result in this conversation. Never estimate or invent quantities.
 - To change anything (rooms, sizes, counts, options) call propose_changes. The user must press Apply - never say a change is done.
 - For "what if" questions use compare_what_if and report the effect on the main materials in %.
+- Change types: set_param(key,value) reset_param(key) set_option(name,value) update_room(room,floor?,length_ft?,width_ft?,room_type?,nth?)
+  add_room(room,floor,room_type,length_ft,width_ft) remove_room(room) update_opening(name,width_ft?,height_ft?,qty?) add_opening(...).
 - Units: feet, sft, cft, rft, bags, tons, Nos. Room types: {', '.join(ROOM_TYPES)}.
 - Options: finish_tier Economy/Standard/Premium, roof_system Traditional/Insulated, masonry Brick/Block, gas_source SNGPL/LPG/None,
   rcc_mix MX_RCC124 (1:2:4) / MX_RCC1153 (1:1.5:3), include_false_ceiling, include_rwh, seismic_bands (true/false).
@@ -210,7 +198,7 @@ class Toolbox:
                 "effect": diff.get("key_totals", []), "note": "Shown to the user with an Apply button - not applied yet."}
 
 
-def _compact(obj, limit=3500) -> str:
+def _compact(obj, limit=1800) -> str:
     s = json.dumps(obj, default=str)
     return s if len(s) <= limit else s[:limit] + '..."(truncated)"'
 
@@ -218,22 +206,55 @@ def _compact(obj, limit=3500) -> str:
 # ---------------------------------------------------------------------------
 # LLM loop
 # ---------------------------------------------------------------------------
-def run_agent(api_key: str, state: ProjectState, history: List[dict], user_text: str, client=None,
-              max_steps: int = MAX_STEPS) -> AgentReply:
-    """history: previous turns as [{"role": "user"|"assistant", "content": str}] (short)."""
-    box = Toolbox(state)
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history[-8:] + [{"role": "user", "content": user_text}]
-    if client is None:
+def _targets(api_key: str, keys, client) -> List[tuple]:
+    """(label, client, model) in order: Groq models first, then Gemini / OpenRouter if the user has keys."""
+    if client is not None:  # injected (tests)
+        return [("injected", client, m) for m in TOOL_MODELS]
+    out = []
+    if api_key:
         from ai.groq_client import get_client
-        client = get_client(api_key)
+        g = get_client(api_key)
+        out += [("Groq", g, m) for m in TOOL_MODELS]
+    if keys is not None:
+        from ai.llm import compat_client, provider_specs
+        specs = provider_specs()
+        for name in ("gemini", "openrouter"):
+            k = getattr(keys, name, "")
+            if k:
+                out.append((specs[name].label, compat_client(specs[name], k), specs[name].tool_model))
+    return out
+
+
+def run_agent(api_key: str, state: ProjectState, history: List[dict], user_text: str, client=None,
+              max_steps: int = MAX_STEPS, keys=None) -> AgentReply:
+    """history: previous turns as [{"role": "user"|"assistant", "content": str}] (short).
+    Tries Groq, then Gemini / OpenRouter (if keys are given) when a provider is out of its free limit."""
+    from ai.llm import friendly_error, is_rate_limited, is_too_large, retry_after_seconds
+
+    box = Toolbox(state)
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history[-4:] + [{"role": "user", "content": user_text}]
+    targets = _targets(api_key, keys, client)
+    if not targets:
+        return AgentReply("", [], [], error="No AI key - add a free Groq or Gemini key in the sidebar.")
     log: List[dict] = []
-    last_err = ""
-    for model in TOOL_MODELS:
+    last_exc: Optional[Exception] = None
+    for _label, cl, model in targets:
         msgs = list(messages)
+        waited = False
+        step = 0
         try:
-            for _step in range(max_steps):
-                resp = client.chat.completions.create(model=model, messages=msgs, tools=TOOLS, tool_choice="auto",
-                                                      temperature=0.1, max_tokens=1200)
+            while step < max_steps:
+                try:
+                    resp = cl.chat.completions.create(model=model, messages=msgs, tools=TOOLS, tool_choice="auto",
+                                                      temperature=0.1, max_tokens=1000)
+                except Exception as exc:  # noqa: BLE001
+                    wait = retry_after_seconds(exc)
+                    if is_rate_limited(exc) and not is_too_large(exc) and not waited and wait is not None and wait <= 20:
+                        time.sleep(wait + 0.5)  # a short per-minute limit: wait once, then continue
+                        waited = True
+                        continue
+                    raise
+                step += 1
                 msg = resp.choices[0].message
                 calls = getattr(msg, "tool_calls", None) or []
                 if not calls:
@@ -254,16 +275,10 @@ def run_agent(api_key: str, state: ProjectState, history: List[dict], user_text:
                     msgs.append({"role": "tool", "tool_call_id": c.id, "content": _compact(result)})
             return AgentReply("I needed more steps than allowed for this request. Here is what I prepared so far"
                               + (" - see the proposed change below." if box.proposals else "."), box.proposals, log)
-        except Exception as exc:  # noqa: BLE001 - try the fallback model, then report
-            last_err = str(exc)
+        except Exception as exc:  # noqa: BLE001 - try the next model / provider, then report
+            last_exc = exc
             continue
-    low = last_err.lower()
-    if "429" in low or "rate limit" in low or "rate_limit" in low or "quota" in low:
-        msg = "The free AI limit has been reached for now (Groq rate limit) - please try again in a minute."
-    elif "401" in low or "invalid api key" in low or "authentication" in low:
-        msg = "The Groq API key was rejected - check the key in the sidebar."
-    else:
-        msg = f"The AI copilot could not be reached ({last_err[:160]})."
+    msg = friendly_error(last_exc) if last_exc else "The AI copilot could not be reached."
     return AgentReply("", box.proposals, log, error=msg)
 
 

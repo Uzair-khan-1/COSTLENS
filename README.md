@@ -1,4 +1,4 @@
-# CostLens — *From plans to materials.* (v0.8.0)
+# CostLens — *From plans to materials.* (v0.8.1)
 
 A drawing-based **Material Take-Off (MTO)** tool for 5-10 marla houses in
 Pakistan. Upload the complete drawing set (CAD-exported PDFs work best); the
@@ -571,6 +571,18 @@ lines). See **[DETAILED_MTO.md](DETAILED_MTO.md)**.
 ---
 
 ## 8. Changelog
+
+**v0.8.1 — works within free AI limits**
+- Fixes Groq free-tier `413 Request too large ... input tokens per minute (ITPM)`: every AI request is
+  measured before sending and the drawing pages are resized (then reduced in number) to fit
+  `config.GROQ_REQUEST_TOKEN_BUDGET` (5,500 tokens). A typical 3-page request now goes at 1024 px (~5.4k
+  tokens instead of ~8.3k).
+- 413 -> shrink and retry; 429 "try again in Xs" -> short wait and retry; other failures -> next model.
+- Optional extra free providers in the sidebar: **Google Gemini** (large free limits, good vision) and
+  **OpenRouter** free models, used automatically when Groq's limit is reached (or instead of Groq).
+  Keys stay in the browser session only.
+- Copilot requests are ~35 % smaller (compact tool definitions, shorter history, trimmed tool results).
+- New module `ai/llm.py` (budgeting, error handling, OpenAI-compatible client); 7 new tests.
 
 **v0.8.0 — save/open projects, sharing, speed, refactor**
 - **Projects:** download a project file (.costlens.json - plain JSON, optionally with the drawings) and

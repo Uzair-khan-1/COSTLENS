@@ -176,12 +176,13 @@ QUICK = [
 def _ask(text: str) -> None:
     msgs = st.session_state.setdefault("copilot_msgs", [])
     msgs.append({"role": "user", "content": text})
-    key = st.session_state.get("groq_api_key", "")
+    from ai.llm import keys_from_mapping
+    keys = keys_from_mapping(st.session_state)
     state = state_from_session()
-    if key:
-        history = [{"role": m["role"], "content": m["content"]} for m in msgs[:-1] if m.get("content")][-8:]
+    if keys.any():
+        history = [{"role": m["role"], "content": m["content"]} for m in msgs[:-1] if m.get("content")][-4:]
         with st.spinner("Copilot is working on it..."):
-            reply = run_agent(key, state, history, text)
+            reply = run_agent(keys.groq, state, history, text, keys=keys)
         if reply.error:
             off = answer_offline(state, text)
             reply = AgentReply(f"_{reply.error} Answering with the built-in assistant:_\n\n" + off.text, off.proposals)
@@ -218,8 +219,9 @@ def _render_proposal(p: Proposal) -> None:
 
 
 def render_copilot(res) -> None:
-    has_key = bool(st.session_state.get("groq_api_key"))
-    st.caption(("\U0001f916 AI copilot (free Groq model): ask in your own words, English or Urdu. " if has_key else
+    from ai.llm import keys_from_mapping
+    has_key = keys_from_mapping(st.session_state).any()
+    st.caption(("\U0001f916 AI copilot (free models): ask in your own words, English or Urdu. " if has_key else
                 "\U0001f916 Built-in copilot (no AI key): use the buttons or short requests like *what if block walls?*. "
                 "Add a free Groq key in the sidebar to ask anything and edit rooms by chat. ")
                + "It only uses the take-off engine for numbers and never changes anything until you press **Apply**.")

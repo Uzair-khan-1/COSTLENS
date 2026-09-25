@@ -73,6 +73,9 @@ def render_brief_step(pi, go_to_step, groq_key: str) -> None:
              "a few simple questions. We turn your answers into a concept layout and calculate every material.")
     b = _brief(pi)
     v = _ver()
+    from ai.llm import keys_from_mapping
+    keys = keys_from_mapping(st.session_state)
+    ai_ready = keys.any()
 
     # ------------------------------------------------------------ 1. input
     with st.container(border=True):
@@ -100,18 +103,18 @@ def render_brief_step(pi, go_to_step, groq_key: str) -> None:
         a1, a2 = st.columns(2)
         with a1:
             ai_clicked = st.button("\U0001f9e0 Read my sketch & description with AI", type="primary", width="stretch",
-                                   disabled=not groq_key or not (kept or desc.strip()),
-                                   help=None if groq_key else "Add a free Groq API key in the sidebar to use AI reading.")
+                                   disabled=not ai_ready or not (kept or desc.strip()),
+                                   help=None if ai_ready else "Add a free Groq or Gemini API key in the sidebar to use AI reading.")
         with a2:
             rule_clicked = st.button("Read my description (no AI)", width="stretch", disabled=not desc.strip(),
                                      help="Reads plot size, storeys, number of bedrooms etc. from your text with simple rules.")
-        if not groq_key:
+        if not ai_ready:
             st.caption("No AI key set - you can still describe the house and answer the questions below. "
                        "A free key from console.groq.com lets the AI read hand sketches.")
         if ai_clicked:
             from ai.sketch_reader import files_to_images, read_sketch
             with st.spinner("The AI is reading your sketch and description..."):
-                data, err = read_sketch(groq_key, files_to_images(kept), desc)
+                data, err = read_sketch(groq_key, files_to_images(kept), desc, keys=keys)
             if err:
                 st.error(err)
             else:
@@ -143,7 +146,7 @@ def render_brief_step(pi, go_to_step, groq_key: str) -> None:
             if st.button("Update with my answers", disabled=not any(a.strip() for _, a in answers)):
                 from ai.sketch_reader import files_to_images, read_sketch
                 with st.spinner("Updating with your answers..."):
-                    data, err = read_sketch(groq_key, files_to_images(kept), desc, previous=st.session_state["brief_ai_json"],
+                    data, err = read_sketch(groq_key, files_to_images(kept), desc, keys=keys, previous=st.session_state["brief_ai_json"],
                                             answers=answers)
                 if err:
                     st.error(err)

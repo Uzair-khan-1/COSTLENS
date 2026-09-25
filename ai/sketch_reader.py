@@ -78,7 +78,8 @@ def files_to_images(files: List[dict], max_images: int = 4) -> List[Image.Image]
 
 
 def read_sketch(api_key: str, images: List[Image.Image], description: str = "",
-                previous: Optional[dict] = None, answers: Optional[List[Tuple[str, str]]] = None) -> Tuple[dict, str]:
+                previous: Optional[dict] = None, answers: Optional[List[Tuple[str, str]]] = None,
+                keys=None) -> Tuple[dict, str]:
     """Returns (json_dict, error_message). Uses the vision model when images are given, else the text model.
     `previous` + `answers` refine an earlier reading with the owner's answers to the AI's questions."""
     from ai.groq_client import call_text_model, call_vision_model
@@ -92,9 +93,10 @@ def read_sketch(api_key: str, images: List[Image.Image], description: str = "",
         prompt += "\n\nOwner's answers to your questions:\n" + "\n".join(f"Q: {q}\nA: {a}" for q, a in answers if a.strip())
     try:
         if images:
-            raw = call_vision_model(api_key, SYSTEM_PROMPT, prompt, images, max_tokens=2500)
+            raw = call_vision_model(api_key, SYSTEM_PROMPT, prompt, images, max_tokens=2500, keys=keys)
         else:
-            raw = call_text_model(api_key, SYSTEM_PROMPT, prompt, model=config.GROQ_TEXT_MODEL, max_tokens=2500, json_mode=True)
+            raw = call_text_model(api_key, SYSTEM_PROMPT, prompt, model=config.GROQ_TEXT_MODEL, max_tokens=2500,
+                                  json_mode=True, keys=keys)
     except Exception as exc:  # noqa: BLE001
         return {}, f"The AI could not be reached: {exc}"
     data = _json_from(raw)

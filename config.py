@@ -14,7 +14,7 @@ from pathlib import Path
 APP_NAME = "CostLens"
 APP_TAGLINE = "From plans to materials."
 APP_FULL_NAME = "CostLens - Drawing-based Material Take-Off for 5-10 marla houses"
-APP_VERSION = "0.8.0"
+APP_VERSION = "0.8.1"
 
 # Brand assets (see assets/generate_logo.py to regenerate/tweak).
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
@@ -62,6 +62,16 @@ GROQ_RETRY_BASE_DELAY_S = 2.0
 # Max dimension (px) we resize any page/image to before sending to Groq.
 # Keeps base64 payloads small and inference fast/cheap.
 MAX_IMAGE_DIMENSION = 1600
+# Free-tier token budgeting (see ai/llm.py). Groq's free tier allows roughly 6,000-8,000 input tokens per
+# minute per model; requests are shrunk (image resolution, then number of pages) to stay below this.
+GROQ_REQUEST_TOKEN_BUDGET = 5500
+# Optional extra free providers (keys entered in the sidebar or set as secrets GEMINI_API_KEY / OPENROUTER_API_KEY)
+GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_REQUEST_TOKEN_BUDGET = 60000
+OPENROUTER_VISION_MODEL = "qwen/qwen2.5-vl-72b-instruct:free"
+OPENROUTER_TEXT_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
+OPENROUTER_TOOL_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
+OPENROUTER_REQUEST_TOKEN_BUDGET = 12000
 
 # Default currency for the rate book / cost estimate.
 DEFAULT_CURRENCY = "PKR"
