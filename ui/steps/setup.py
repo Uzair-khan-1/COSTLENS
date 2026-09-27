@@ -1,4 +1,4 @@
-"""Step 1 - project setup, take-off specification and drawing upload."""
+"""Step 1 - your plot: what the user has (drawings / sketch / idea), city & plot, finish level, advanced settings."""
 from __future__ import annotations
 
 import hashlib
@@ -10,10 +10,21 @@ from detailed_mto import Options
 from engineering import plot_templates
 from knowledge import load_knowledge_base
 from models.schemas import EngineeringAssumptions, ProjectInputs
+from ui import illustrations as ill
+from ui.guide import section, step_header
+from ui.illustrations import tip_box_html
 from ui.state import clear_dmto_review, clear_drawing_derived_state, go_to_step
 from ui.steps.analysis import base_params
 from ui.steps.constants import RCC_MIXES, TIER_TO_FINISH, TIERS
+from ui.texts import CITIES, FINISH_CARDS
 from utils import units
+
+CHOICES = {
+    "drawings": ("Architect's drawings", "A PDF drawing set (AutoCAD export) - the most accurate result.", ill.card_cad),
+    "sketch": ("A hand sketch or photo", "A rough plan on paper or a photo - we ask a few questions to complete it.", ill.card_sketch),
+    "idea": ("Just an idea", "No drawing yet? Describe the house (e.g. 5 marla, 4 bedrooms) and answer simple questions.", ill.card_idea),
+}
+GAS_LABELS = {"SNGPL": "Piped gas (Sui gas)", "LPG": "LPG cylinders", "None": "No gas (electric)"}
 
 
 def _uploads_signature(files: list) -> tuple:
@@ -21,170 +32,90 @@ def _uploads_signature(files: list) -> tuple:
     return tuple((f["name"], hashlib.md5(f["bytes"]).hexdigest(), f["view_tag"]) for f in files)
 
 
+def _choice_cards() -> str:
+    cur = st.session_state.get("ui_choice") or ("sketch" if st.session_state.get("input_mode") == "sketch" else "drawings")
+    cols = st.columns(3)
+    for col, (key, (title, desc, art)) in zip(cols, CHOICES.items()):
+        with col.container(border=True):
+            st.markdown(art(), unsafe_allow_html=True)
+            st.markdown(f"<div style='font-weight:700;color:#0B1E3D;font-size:16px'>{title}</div>"
+                        f"<div style='color:#64748B;font-size:13.5px;min-height:62px;margin:2px 0 6px 0'>{desc}</div>",
+                        unsafe_allow_html=True)
+            chosen = key == cur
+            if st.button("\u2713 Selected" if chosen else "Choose", key=f"choice_{key}", width="stretch",
+                         type="primary" if chosen else "secondary"):
+                st.session_state["ui_choice"] = key
+                st.rerun()
+    return cur
 
-# ---------------------------------------------------------------------------
-# STEP 1 — Project setup + upload
-# ---------------------------------------------------------------------------
+
 def step_1():
-    st.header("Step 1 \u00b7 Project Setup")
+    step_header(1)
     pi: ProjectInputs = st.session_state["project_inputs"]
+    opts: Options = st.session_state["dmto_options"]
+    if int(st.session_state.get("max_step", 1) or 1) == 1:
+        st.markdown(ill.how_it_works(), unsafe_allow_html=True)
 
-    st.markdown("##### What do you have?")
-    modes = {"drawings": "\U0001f4d0 Architect's drawings (CAD PDF / drawing set)",
-             "sketch": "\u270f\ufe0f A sketch, a photo, or just an idea - guide me with questions"}
-    cur_mode = st.session_state.get("input_mode", "drawings")
-    input_mode = st.radio("How will you give us the house design?", list(modes), format_func=lambda k: modes[k],
-                          index=list(modes).index(cur_mode) if cur_mode in modes else 0, key="input_mode_radio",
-                          label_visibility="collapsed")
-    if input_mode == "sketch":
-        st.info("No drawings needed: in the next step you can upload a hand sketch or photo and/or describe the house; "
-                "the AI reads it (optional) and the app asks a few simple questions, then calculates every material. "
-                "Result: a concept-level take-off (about \u00b115-30%).")
-    else:
-        st.write("Enter the project details, choose the take-off specification and upload the complete drawing set "
-                 "(architectural, structural, plumbing and electrical sheets).")
+    # ---------------------------------------------------------------- 1. what do you have
+    section("1\ufe0f\u20e3 What do you have?", "Choose one - you can change it later.")
+    choice = _choice_cards()
+    input_mode = "drawings" if choice == "drawings" else "sketch"
 
-    st.markdown("##### Units")
-    unit_system_options = [units.SI, units.FPS]
-    unit_system = st.selectbox(
-        "Unit System",
-        options=unit_system_options,
-        format_func=lambda v: units.UNIT_SYSTEM_LABELS[v],
-        index=unit_system_options.index(pi.unit_system) if pi.unit_system in unit_system_options else 1,
-        help=(
-            "FPS (default, standard Pakistani practice): every input, default dimension, calculation "
-            "trace, MTO/BOQ quantity, rate and export is in feet/inches, sqft and cft, with psi concrete "
-            "grades and Grade 40/60/75 steel. SI: everything in metres, m² and m³ with M-grades and "
-            "Fe-grade steel. Conversions are exact; each system uses its own round standard details "
-            "(e.g. 6\" lintels in FPS vs 150 mm in SI)."
-        ),
-        key="unit_system_selector",
-    )
+    # ---------------------------------------------------------------- 2. plot
+    section("2\ufe0f\u20e3 Your plot", "Common Pakistani standards are filled in for you.")
+    left, right = st.columns([3, 2])
+    with left:
+        city_names = list(CITIES)
+        city0 = pi.location if pi.location in CITIES else "Islamabad"
+        city = st.selectbox("City", city_names, index=city_names.index(city0), key="ui_city")
+        st.caption(CITIES[city]["note"])
+        sizes = list(plot_templates.PLOT_SIZES_MARLA)
+        plot_marla = st.segmented_control(
+            "Plot size", sizes, default=pi.plot_marla if pi.plot_marla in sizes else 5, required=True,
+            format_func=lambda m: f"{m} marla", key="ui_plot_size",
+            help="Pick the closest size. For other sizes choose the nearest and enter the real frontage below.")
+        storey_labels = {1: "Single storey", 2: "Double storey", 3: "Triple storey"}
+        plot_storeys = st.segmented_control(
+            "Number of floors", plot_templates.STOREY_OPTIONS,
+            default=pi.plot_storeys if pi.plot_storeys in plot_templates.STOREY_OPTIONS else 2, required=True,
+            format_func=lambda n: storey_labels[n], key="ui_storeys")
+        project_name = st.text_input("Project name (for your files)",
+                                     "" if pi.project_name in ("", "Untitled Project") else pi.project_name,
+                                     placeholder="e.g. My house - G-13 Islamabad")
 
-    # ---- Plot (the app's 5-10 marla scope) --------------------------------
-    st.markdown("##### Plot (5-10 marla)")
-    plot_options = [None] + plot_templates.PLOT_SIZES_MARLA
-    pc1, pc2, pc3, pc4 = st.columns(4)
-    plot_marla = pc1.selectbox(
-        "Plot size",
-        plot_options,
-        index=plot_options.index(pi.plot_marla) if pi.plot_marla in plot_options else 0,
-        format_func=lambda m: "Not specified" if m is None else f"{m} marla",
-        help="Choosing a plot size gives a complete typical house as the starting point (even with no drawing) "
-        "and lets the app flag values that are implausible for that plot.",
-    )
-    marla_options = list(plot_templates.MARLA_STANDARDS)
-    marla_sqft = pc2.selectbox(
-        "Marla standard",
-        marla_options,
-        index=marla_options.index(pi.marla_sqft) if pi.marla_sqft in marla_options else 0,
-        format_func=lambda v: plot_templates.MARLA_STANDARDS[v],
-        disabled=plot_marla is None,
-        help="Housing societies (LDA/DHA/Bahria style) use 225 sqft per marla; traditional measurement uses 272.25 sqft - a ~21% difference.",
-    )
-    storey_labels = {1: "Single storey", 2: "G+1 (double storey)", 3: "G+2"}
-    plot_storeys = pc3.selectbox(
-        "Storeys",
-        plot_templates.STOREY_OPTIONS,
-        index=plot_templates.STOREY_OPTIONS.index(pi.plot_storeys) if pi.plot_storeys in plot_templates.STOREY_OPTIONS else 1,
-        format_func=lambda n: storey_labels[n],
-        disabled=plot_marla is None,
-    )
+    # advanced settings are rendered further down but some values are needed for the picture
+    marla_default = CITIES[city]["marla_sqft"]
+    marla_sqft = st.session_state.get(f"adv_marla_{city}", marla_default)
+    unit_system = st.session_state.get("unit_system_selector", pi.unit_system if pi.unit_system in (units.SI, units.FPS) else units.FPS)
     typical_w, _ = plot_templates.plot_dimensions_ft(plot_marla or 5, marla_sqft)
-    current_w = pi.plot_width_ft or typical_w
-    fps_units = units.is_fps(unit_system)
-    shown_w = current_w if fps_units else current_w * 0.3048
-    entered_w = pc4.number_input(
-        f"Plot width / frontage ({'ft' if fps_units else 'm'})",
-        min_value=1.0,
-        value=float(round(shown_w, 2)),
-        step=1.0 if fps_units else 0.5,
-        disabled=plot_marla is None,
-        key=f"plot_width_{plot_marla}_{marla_sqft}_{unit_system}",
-        help="Typical frontage for this plot size is pre-filled - change it to match your plot.",
-    )
+    with left:
+        fps_units = units.is_fps(unit_system)
+        current_w = pi.plot_width_ft if (pi.plot_width_ft and pi.plot_marla == plot_marla and pi.marla_sqft == marla_sqft) else typical_w
+        shown_w = current_w if fps_units else current_w * 0.3048
+        entered_w = st.number_input(
+            f"Plot width at the road ({'ft' if fps_units else 'm'})", min_value=1.0, value=float(round(shown_w, 1)),
+            step=1.0 if fps_units else 0.5, key=f"plot_width_{plot_marla}_{marla_sqft}_{unit_system}",
+            help="The typical frontage for this plot size is filled in - change it to match your plot.")
     entered_w_ft = entered_w if fps_units else entered_w / 0.3048
     plot_width_ft = None if abs(entered_w_ft - typical_w) < 0.01 else entered_w_ft
-    if plot_marla:
+    with right:
         W, D = plot_templates.plot_dimensions_ft(plot_marla, marla_sqft, plot_width_ft)
         cw, cd = plot_templates.covered_footprint_ft(plot_marla, marla_sqft, plot_width_ft)
-        L = lambda ft: units.length_text(ft * 0.3048, unit_system, f"{ft * 0.3048:.2f} m")  # noqa: E731
-        Ar = lambda sq: units.area_text(sq * 0.09290304, unit_system, f"{sq * 0.09290304:,.1f} m²", 0)  # noqa: E731
-        st.caption(
-            f"Plot {L(W)} x {L(D)} = {Ar(W * D)}. Typical covered footprint {L(cw)} x {L(cd)} = {Ar(cw * cd)} per floor "
-            "(front/rear open space as typical - edit in Step 3 if different)."
-        )
+        st.markdown(ill.plot_diagram(W, D, plot_marla, marla_sqft, (cw, cd)), unsafe_allow_html=True)
+        st.markdown(ill.house_elevation(int(plot_storeys), True), unsafe_allow_html=True)
 
-    # No st.form() here on purpose: a form batches every widget inside it
-    # and only reruns on submit, which is exactly what breaks per-file
-    # drawing tags (see below) - and the user also wants the Continue
-    # button to visually sit AFTER the upload section, so the whole step
-    # is simplest as one flat sequence of plain widgets with one button
-    # at the very end. Streamlit reruns the whole script on every widget
-    # interaction regardless of whether a form is used, so nothing here
-    # loses functionality by not being wrapped in a form.
-    c1, c2 = st.columns(2)
-    with c1:
-        project_name = st.text_input("Project Name", pi.project_name)
-        client_name = st.text_input("Client Name (optional)", pi.client_name)
-    with c2:
-        location = st.text_input("Location / City", pi.location)
-        grade_unit_key = units.FPS if unit_system == units.FPS else units.SI
-        wall_thickness_options = units.WALL_THICKNESS_OPTIONS_MM[grade_unit_key]
-        # A value saved under the other unit system (e.g. 230 mm) maps to
-        # the nearest option of this one (228.6 mm = 9").
-        current_wall_mm = units.nearest_option(pi.wall_thickness_mm, wall_thickness_options)
-        wall_thickness_mm = st.selectbox(
-            "Main (external/load-bearing) wall thickness",
-            wall_thickness_options,
-            index=wall_thickness_options.index(current_wall_mm) if current_wall_mm in wall_thickness_options else 3,
-            format_func=lambda mm: units.wall_thickness_label(mm, unit_system),
-            help="Used only when the drawings are scanned images (CAD PDFs give measured wall thicknesses).",
-        )
-
-    # ---- Take-off specification (drives which materials are quantified) ----
-    opts: Options = st.session_state["dmto_options"]
-    kb = load_knowledge_base()
-    st.markdown("##### Take-off scope & specification")
-    st.caption(
-        "These choices decide WHICH materials are quantified (e.g. traditional roof = bitumen + earth + brick tiles; "
-        "insulated roof = EPS/XPS + membrane). Quantities always come from the drawings. Costs are not part of this version."
-    )
-    s1, s2, s3, s4 = st.columns(4)
-    scope = s1.selectbox("Scope", kb.scope_names, index=kb.scope_names.index(opts.scope) if opts.scope in kb.scope_names else 0,
-                         help="Complete Project, a single discipline, or the Pakistani 'Grey Structure' / 'Finishing' contract packages.")
-    tier = s2.selectbox("Finish tier", TIERS, index=TIERS.index(opts.finish_tier) if opts.finish_tier in TIERS else 1,
-                        help="Economy skips false ceilings/cornices and built-in kitchen appliances; Premium adds items such as "
-                        "linear shower drains, recirculation pump and built-in oven.")
-    mix_keys = list(RCC_MIXES)
-    rcc_mix = s3.selectbox("Structural RCC mix", mix_keys, index=mix_keys.index(opts.rcc_mix) if opts.rcc_mix in mix_keys else 0,
-                           format_func=lambda k: RCC_MIXES[k],
-                           help="Applies to footings, columns, beams, slabs and stairs. Tanks, lintels and DPC keep their drawing mixes.")
-    roof = s4.selectbox("Roof treatment", ["Traditional", "Insulated"], index=["Traditional", "Insulated"].index(opts.roof_system),
-                        help="Traditional = 2 coats bitumen + polythene + earth + mud plaster + brick tiles. "
-                        "Insulated = EPS/XPS board + membrane + screed.")
-    s5, s6, s7, s8 = st.columns(4)
-    masonry = s5.selectbox("Walling", ["Brick", "Block"], index=["Brick", "Block"].index(opts.masonry))
-    gas = s6.selectbox("Gas supply", ["SNGPL", "LPG", "None"], index=["SNGPL", "LPG", "None"].index(opts.gas_source),
-                       help="New SNGPL domestic connections are restricted - choose LPG if the house will use cylinders.")
-    fc = s7.checkbox("False ceilings", value=opts.include_false_ceiling)
-    rwh = s7.checkbox("Rainwater recharge well", value=opts.include_rwh, help="CDA requires rainwater harvesting/recharge (not shown in most drawing sets).")
-    bands = s8.checkbox("Seismic lintel bands", value=opts.seismic_bands, help="Recommended for load-bearing masonry in Islamabad/Rawalpindi (BCP zone 2B).")
-    include_opt = s8.checkbox("Quantify optional items too", value=opts.include_options,
-                              help="Also include Optional/Alternative/Premium materials in the take-off.")
-
+    # ---------------------------------------------------------------- 3. drawings upload (drawing route)
     uploaded_files_with_tags = list(st.session_state.get("uploaded_files") or [])
     if input_mode == "drawings":
-        st.markdown("##### Drawing Upload")
-        st.caption(
-            f"Upload the whole drawing set - up to {config.MAX_DRAWING_FILES} files (floor plans, sections, elevations, "
-            "foundation/structural sheets), as multi-page PDFs or images. CAD-exported PDFs are read directly, free and "
-            "without AI: sheets are sorted automatically, and room sizes, levels, schedules and wall lengths are taken "
-            f"from the drawing itself. Only the {config.MAX_TOTAL_IMAGES} most useful pages are ever sent to the AI, for "
-            "whatever is still missing."
-        )
+        section("3\ufe0f\u20e3 Upload your drawings",
+                "The complete set from your architect works best (plans, elevations, foundation, plumbing and electrical sheets).")
+        st.markdown(tip_box_html("Tips for the best result", [
+            "Ask your architect for the PDF exported from AutoCAD (not a scan or photo) - we can read every size from it.",
+            "One multi-page PDF with all sheets is perfect. Photos also work, but then we need the AI or your answers.",
+            f"Up to {config.MAX_DRAWING_FILES} files. The sheet type is detected automatically - you don't have to set it."],
+            "آرکیٹیکٹ سے AutoCAD والی PDF مانگیں - اسکین نہیں"), unsafe_allow_html=True)
         raw_uploads = st.file_uploader(
-            "Upload drawing(s) (PDF, PNG, or JPG)",
+            "Drawing files (PDF, PNG or JPG)",
             type=config.SUPPORTED_FILE_TYPES,
             accept_multiple_files=True,
             key="drawing_uploader",
@@ -197,13 +128,15 @@ def step_1():
             for i, f in enumerate(raw_uploads[: config.MAX_DRAWING_FILES]):
                 fc1, fc2 = st.columns([3, 2])
                 fc1.caption(f"\U0001f4c4 {f.name}")
-                view_tag = fc2.selectbox(
-                    "View type",
-                    config.DRAWING_VIEW_TYPES,
-                    index=min(i, len(config.DRAWING_VIEW_TYPES) - 1),
-                    key=f"view_tag_{i}",
-                    label_visibility="collapsed",
-                )
+                if f.name.lower().endswith(".pdf"):
+                    # every sheet of a PDF is classified automatically (plans, elevations, sections ...)
+                    fc2.caption("\u2705 sheets detected automatically")
+                    view_tag = config.DRAWING_VIEW_TYPES[-1]
+                else:
+                    view_tag = fc2.selectbox(
+                        "What does this picture show?", config.DRAWING_VIEW_TYPES,
+                        index=min(i, len(config.DRAWING_VIEW_TYPES) - 1), key=f"view_tag_{i}",
+                        label_visibility="collapsed")
                 uploaded_files_with_tags.append({"name": f.name, "bytes": f.getvalue(), "view_tag": view_tag})
         elif st.session_state.get("uploaded_files"):
             # Streamlit empties a file_uploader when you navigate away from the
@@ -230,14 +163,72 @@ def step_1():
                 st.session_state["uploaded_signature"] = None
                 st.rerun()
 
-    submitted = st.button("Continue to Drawing Analysis →" if input_mode == "drawings" else "Continue to your requirements →",
-                          width="stretch", type="primary")
+    if input_mode == "sketch":
+        st.info("\u270f\ufe0f Next you can upload your sketch or photo (optional), describe the house in your own words, "
+                "and answer a few simple questions. The result is a concept estimate (about \u00b115-30%).")
+
+    # ---------------------------------------------------------------- 4. finish level
+    section(("4\ufe0f\u20e3" if input_mode == "drawings" else "3\ufe0f\u20e3") + " Finish level",
+            "How good should the tiles, fittings and ceilings be?")
+    tier = st.segmented_control("Finish level", TIERS, default=opts.finish_tier if opts.finish_tier in TIERS else "Standard",
+                                required=True, format_func=lambda t: f"{FINISH_CARDS[t][0]} {t}", key="ui_tier",
+                                label_visibility="collapsed")
+    st.caption(FINISH_CARDS[tier][2])
+
+    # ---------------------------------------------------------------- advanced (engineers)
+    kb = load_knowledge_base()
+    with st.expander("\u2699\ufe0f Advanced settings (for engineers) - common Pakistani standards are already selected"):
+        a1, a2, a3 = st.columns(3)
+        marla_options = list(plot_templates.MARLA_STANDARDS)
+        marla_sqft = a1.selectbox("Marla size", marla_options, index=marla_options.index(marla_default),
+                                  format_func=lambda v: plot_templates.MARLA_STANDARDS[v], key=f"adv_marla_{city}")
+        unit_system_options = [units.FPS, units.SI]
+        unit_system = a2.selectbox("Units", unit_system_options, format_func=lambda v: units.UNIT_SYSTEM_LABELS[v],
+                                   index=unit_system_options.index(pi.unit_system) if pi.unit_system in unit_system_options else 0,
+                                   key="unit_system_selector",
+                                   help="FPS (feet, sq ft, cft, bags) is standard in Pakistan. The material take-off is always in FPS.")
+        grade_unit_key = units.FPS if unit_system == units.FPS else units.SI
+        wall_thickness_options = units.WALL_THICKNESS_OPTIONS_MM[grade_unit_key]
+        current_wall_mm = units.nearest_option(pi.wall_thickness_mm, wall_thickness_options)
+        wall_thickness_mm = a3.selectbox(
+            "Main wall thickness", wall_thickness_options,
+            index=wall_thickness_options.index(current_wall_mm) if current_wall_mm in wall_thickness_options else 3,
+            format_func=lambda mm: units.wall_thickness_label(mm, unit_system),
+            help="Standard: 9 inch outer walls. Only used when drawings are scans (CAD drawings give measured walls).")
+        b1, b2, b3, b4 = st.columns(4)
+        scope = b1.selectbox("What to include", kb.scope_names,
+                             index=kb.scope_names.index(opts.scope) if opts.scope in kb.scope_names else 0,
+                             help="Complete house, one trade, or the 'Grey Structure' / 'Finishing' contract packages.")
+        mix_keys = list(RCC_MIXES)
+        rcc_mix = b2.selectbox("Concrete for slabs & columns", mix_keys,
+                               index=mix_keys.index(opts.rcc_mix) if opts.rcc_mix in mix_keys else 0,
+                               format_func=lambda k: RCC_MIXES[k])
+        roof = b3.selectbox("Roof treatment", ["Traditional", "Insulated"], index=["Traditional", "Insulated"].index(opts.roof_system),
+                            format_func=lambda r: {"Traditional": "Traditional (bitumen, mud, brick tiles)",
+                                                   "Insulated": "Insulated (foam boards + membrane)"}[r])
+        masonry = b4.selectbox("Walls", ["Brick", "Block"], index=["Brick", "Block"].index(opts.masonry),
+                               format_func=lambda m: {"Brick": "Burnt clay bricks", "Block": "Concrete blocks"}[m])
+        c1, c2, c3, c4 = st.columns(4)
+        gas = c1.selectbox("Cooking gas", list(GAS_LABELS), index=list(GAS_LABELS).index(opts.gas_source),
+                           format_func=lambda g: GAS_LABELS[g])
+        fc = c2.checkbox("False ceilings", value=opts.include_false_ceiling if tier != "Economy" else False, key=f"adv_fc_{tier}")
+        rwh = c2.checkbox("Rainwater recharge well", value=CITIES[city]["rwh"],
+                          key=f"adv_rwh_{city}", help="Required by CDA in Islamabad.")
+        bands = c3.checkbox("Earthquake (seismic) bands", value=opts.seismic_bands,
+                            help="Recommended - Pakistan's main cities are in seismic zones 2A-3.")
+        include_opt = c3.checkbox("Also list optional items", value=opts.include_options)
+        client_name = c4.text_input("Client name (optional)", pi.client_name)
+
+    label = "Continue \u2192 read my drawings" if input_mode == "drawings" else "Continue \u2192 describe my house"
+    if input_mode == "drawings" and not uploaded_files_with_tags:
+        st.caption("No drawings uploaded yet - you can still continue; the app then starts from a typical house for your plot.")
+    submitted = st.button(label, width="stretch", type="primary")
 
     if submitted:
         st.session_state["project_inputs"] = pi.model_copy(update=dict(
             project_name=project_name or "Untitled Project",
             client_name=client_name,
-            location=location,
+            location=city,
             wall_thickness_mm=wall_thickness_mm,
             finish_level=TIER_TO_FINISH.get(tier, "Standard"),
             unit_system=unit_system,

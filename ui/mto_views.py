@@ -22,6 +22,7 @@ from detailed_mto.edits import (OPENING_COLS, ROOM_COLS, mark_user_edits, openin
 from detailed_mto.engine import (INCLUDED_STATUSES, ST_CALC, ST_CALC_ASSUMED, ST_NEEDS_INPUT, ST_OPTION, ST_PROVISIONAL,
                                  ST_REFERENCE, DetailedResult, purchase_qty)
 from detailed_mto.export import STAGE_NAMES, benchmarks_for
+from detailed_mto.boq import boq_rows
 from detailed_mto.validation import errors, validate_project
 from knowledge import load_knowledge_base
 
@@ -360,46 +361,70 @@ def _total(res: DetailedResult, ids) -> float:
     return sum(m.gross_qty for m in res.materials if m.material.mat_id in ids)
 
 
+MAIN_ICONS = {"Cement": "\U0001f3ed", "Steel": "\U0001f529", "Bricks": "\U0001f9f1", "Sand": "\u23f3", "Crush": "\U0001faa8",
+              "Tiles (floor + wall)": "\U0001f7eb"}
+MAIN_SUB = {"Cement": "50 kg bags", "Steel": "sarya, all sizes", "Bricks": "incl. wastage", "Sand": "all types",
+            "Crush": "bajri / aggregate", "Tiles (floor + wall)": "floor + wall"}
+
+
 def render_takeoff(res: DetailedResult) -> None:
+    from ui import copilot_views
+    from ui.guide import section
+    from ui.illustrations import stat_cards_html
     counts = res.status_counts()
     quantified = sum(v for k, v in counts.items() if k in INCLUDED_STATUSES)
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Materials in scope", len(res.scoped_materials()))
-    m2.metric("Quantified", quantified)
-    m3.metric("Using assumed inputs", counts.get(ST_CALC_ASSUMED, 0))
-    m4.metric("Need your input", counts.get(ST_NEEDS_INPUT, 0))
-    shown = [(label, ids, unit, div) for label, ids, unit, div in KEY_TOTALS if _total(res, ids) > 0]
-    for i in range(0, len(shown), 3):
-        cols = st.columns(3)
-        for c, (label, ids, unit, div) in zip(cols, shown[i:i + 3]):
-            v = _total(res, ids) / div
-            c.metric(label, f"{v:,.2f} {unit}" if div > 1 else f"{v:,.0f} {unit}")
-    from ui import copilot_views
+    section("\U0001f4e6 Main materials for your house", "Quantities to buy, including normal site wastage.")
+    cards = []
+    for label, ids, unit, div in KEY_TOTALS:
+        v = _total(res, ids) / div
+        if v > 0:
+            cards.append((MAIN_ICONS.get(label, "\u2022"), label, f"{v:,.2f} {unit}" if div > 1 else f"{v:,.0f} {unit}",
+                          MAIN_SUB.get(label, "")))
+    st.markdown(stat_cards_html(cards), unsafe_allow_html=True)
+    st.caption(f"\u2705 {quantified} materials calculated \u00b7 {counts.get(ST_CALC_ASSUMED, 0)} use a standard size or count "
+               f"(marked 'check') \u00b7 {counts.get(ST_NEEDS_INPUT, 0)} need your input \u00b7 prices are not included yet.")
     copilot_views.render_checker(res)  # drawing conflicts, odd ratios, inconsistencies - with one-click fixes
 
-    t0, tc, t1, t2, t3, t4, t5, t6 = st.tabs(["🛒 Shopping list", "🤖 Copilot", "📋 Material schedule",
-                                               "🗓️ By construction stage", "📐 Work items", "🔍 Traceability",
-                                               "📝 Assumptions & gaps", "✅ Checks"],
-                                              key="dmto_step4_tabs")  # keyed: stays on the same tab after a button click
-    with t0:
+    t_buy, t_boq, t_when, t_ai, t_eng = st.tabs(["\U0001f6d2 What to buy", "\U0001f9fe Bill of Quantities", "\U0001f5d3\ufe0f When to buy",
+                                                 "\U0001f916 Ask the assistant", "\u2699\ufe0f For engineers"],
+                                                key="dmto_step4_tabs")  # keyed: stays on the same tab after a button click
+    with t_buy:
         _shopping_tab(res)
-    with tc:
-        copilot_views.render_copilot(res)
-    with t1:
-        _schedule_tab(res)
-    with t2:
+    with t_boq:
+        _boq_tab(res)
+    with t_when:
         _stage_tab(res)
-    with t3:
-        st.dataframe(pd.DataFrame([{"WI_ID": w.wi_id, "Division": w.division, "Work item": w.description, "Unit": w.unit,
-                                    "Quantity": round(w.qty, 2), "Status": w.status, "Confidence": w.confidence,
-                                    "Calculation": w.calculation} for w in res.scoped_work_items()]),
-                     hide_index=True, width="stretch", height=520)
-    with t4:
-        _trace_tab(res)
-    with t5:
-        _assumptions_tab(res)
-    with t6:
-        _checks_tab(res)
+    with t_ai:
+        copilot_views.render_copilot(res)
+    with t_eng:
+        e1, e2, e3, e4, e5 = st.tabs(["Material schedule", "Work items (detail)", "Traceability", "Assumptions & gaps", "Checks"],
+                                     key="dmto_step4_eng_tabs")
+        with e1:
+            _schedule_tab(res)
+        with e2:
+            st.dataframe(pd.DataFrame([{"WI_ID": w.wi_id, "Division": w.division, "Work item": w.description, "Unit": w.unit,
+                                        "Quantity": round(w.qty, 2), "Status": w.status, "Confidence": w.confidence,
+                                        "Calculation": w.calculation} for w in res.scoped_work_items()]),
+                         hide_index=True, width="stretch", height=520)
+        with e3:
+            _trace_tab(res)
+        with e4:
+            _assumptions_tab(res)
+        with e5:
+            _checks_tab(res)
+
+
+def _boq_tab(res: DetailedResult) -> None:
+    rows = boq_rows(res)
+    st.caption("The work your contractor will do, measured from your house (e.g. brickwork in cft, plaster in sq ft). "
+               "Give this to contractors so they can quote their rates - prices will be added in a later version. "
+               "\u26a0\ufe0f = based on a standard size, please confirm.")
+    secs = list(dict.fromkeys(r["Section"] for r in rows))
+    pick = st.multiselect("Sections", secs, default=[], placeholder="All sections", key="boq_secs")
+    view = [r for r in rows if not pick or r["Section"] in pick]
+    st.dataframe(pd.DataFrame(view), hide_index=True, width="stretch", height=520,
+                 column_config={"Description of work": st.column_config.TextColumn(width="large"),
+                                "Quantity": st.column_config.NumberColumn(format="localized")})
 
 
 def _reliability(m) -> str:
@@ -428,7 +453,7 @@ def _shopping_tab(res: DetailedResult) -> None:
         q, unit = purchase_qty(m.material, m.gross_qty)
         code = _stage_code(m)
         rows.append({"Material": m.material.description, "Quantity to buy": q, "Buy unit": unit,
-                     "When needed": f"{code} - {STAGE_NAMES.get(code, '')}", "Reliability": rel,
+                     "When needed": STAGE_NAMES.get(code, code), "Reliability": rel,
                      "Specification": m.material.specification, "Trade": m.material.category, "Code": m.material.mat_id})
     st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch", height=560,
                  column_config={"Material": st.column_config.TextColumn(width="large"),

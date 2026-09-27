@@ -47,11 +47,11 @@ def render_sidebar() -> None:
         st.caption("AI: " + (" \u2192 ".join(active) if active else "off (built-in rules only)"))
 
         st.markdown("---")
-        st.markdown("### Progress")
-        st.caption("Click a step to jump to it.")
+        st.markdown("### Your progress")
+        st.caption("Click a step to go back to it.")
         labels = list(STEP_LABELS)
         if st.session_state.get("input_mode") == "sketch":
-            labels[1] = "2. Your Requirements"
+            labels[1] = "2. Your requirements"
         target = theme.render_step_nav(labels, st.session_state["step"], int(st.session_state.get("max_step", 1) or 1),
                                        _step_available)
         if target is not None:
@@ -62,12 +62,22 @@ def render_sidebar() -> None:
 
         st.markdown("---")
         _render_project_box()
+        _render_help_box()
         if st.button("\U0001f504 Start New Project", width="stretch"):
             reset_project()
             st.rerun()
 
         st.markdown("---")
         st.caption(f"\u26a0\ufe0f {config.DISCLAIMER_TEXT_SHORT}")
+
+
+def _render_help_box() -> None:
+    from ui.texts import GLOSSARY
+    with st.expander("\U0001f4d6 Words explained"):
+        for word, meaning in GLOSSARY:
+            st.markdown(f"**{word}** - {meaning}")
+    st.checkbox("Show 'what to do here' tips", value=not st.session_state.get("hide_tips", False), key="ui_show_tips",
+                on_change=lambda: st.session_state.update(hide_tips=not st.session_state.get("ui_show_tips", True)))
 
 
 def _render_project_box() -> None:

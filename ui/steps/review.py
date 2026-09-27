@@ -158,85 +158,100 @@ def _render_structure_inputs(params, unit_system):
     return params
 
 
+def _house_summary(pi, params) -> None:
+    """Big, plain 'your house' cards so the owner can confirm the basics at a glance."""
+    from ui.illustrations import stat_cards_html
+    try:
+        p = mto_views.current_project(pi, params)
+    except Exception:  # noqa: BLE001 - never block the page on the summary
+        return
+    cov = sum(f.covered_sft for f in p.floors)
+    n = lambda *t: len(p.rooms_of(*t))  # noqa: E731
+    doors = sum(o.qty for o in p.doors())
+    wins = sum(o.qty for o in p.windows() if o.kind == "window")
+    cards = [("\U0001f3e0", "Floors", f"{len(p.storeys)}" + (" + mumty" if p.mumty else ""), f"{p.v('H_FLOOR'):g} ft each"),
+             ("\U0001f4d0", "Covered area", f"{cov:,.0f} sq ft", "all floors"),
+             ("\U0001f6cf\ufe0f", "Bedrooms", f"{n('Bedroom')}", f"{n('Lounge / TV lounge', 'Drawing room')} lounges / drawing"),
+             ("\U0001f6bf", "Bathrooms", f"{n('Bathroom')}", f"{n('Kitchen')} kitchen(s)"),
+             ("\U0001f6aa", "Doors / windows", f"{doors} / {wins}", "check sizes below"),
+             ("\U0001f9f1", "Structure", "Load-bearing" if p.v("FDN_STRIP") >= 0.5 else "RCC frame", "brick walls carry the roof"
+              if p.v("FDN_STRIP") >= 0.5 else "columns & beams")]
+    st.markdown(stat_cards_html(cards), unsafe_allow_html=True)
+
+
 def step_3():
-    st.header("Step 3 \u00b7 Review Data")
+    from ui import copilot_views
+    from ui.guide import section, step_header
+    step_header(3)
     pi: ProjectInputs = st.session_state["project_inputs"]
     params = st.session_state["extracted_params"]
     unit_system = pi.unit_system
 
-    if st.session_state.get("ai_errors"):
-        for e in st.session_state["ai_errors"]:
-            st.error(e)
-    facts = st.session_state.get("package_facts")
-    n_rooms = sum(len(f.rooms) for f in facts.floors.values()) if (facts is not None and facts.has_facts()) else 0
-    if st.session_state.get("input_mode") == "sketch":
-        st.success(f"\u2705 Project created from your requirements: {len(st.session_state.get('dmto_rooms') or [])} rooms. "
-                   "Check the tabs below, then calculate.")
-    elif n_rooms:
-        st.success(
-            f"\u2705 Read from the drawings: {n_rooms} rooms with sizes, wall lengths by thickness, levels and "
-            f"{len(st.session_state.get('drawing_filled') or [])} structural value(s). Check the tabs below - values marked "
-            "\u26aa are defaults, \U0001f7e2 come from the drawings."
-        )
+    for e in st.session_state.get("ai_errors") or []:
+        st.error(e)
+    mto_views.render_drawing_mode_banner()
+    mto_views.seed_review_rows(pi, params)
+    section("\U0001f3e1 Your house", "Read from your " + ("answers" if st.session_state.get("input_mode") == "sketch"
+                                                          else "drawings") + " - fix anything below that looks wrong.")
+    _house_summary(pi, params)
     if (st.session_state.get("used_ai") or st.session_state.get("drawing_filled") or pi.plot_marla) and params.extraction_warnings:
-        with st.expander("\u26a0\ufe0f Extraction warnings", expanded=False):
+        with st.expander("\u26a0\ufe0f Notes from reading the drawings", expanded=False):
             for w in params.extraction_warnings:
                 st.warning(w)
     if params.overall_notes and st.session_state.get("used_ai") and st.session_state.get("input_mode") != "sketch":
         st.info(f"**AI notes:** {params.overall_notes}")
-    mto_views.render_drawing_mode_banner()
-    st.caption(mto_views.options_summary(st.session_state["dmto_options"]) + " (change in Step 1)")
 
-    mto_views.seed_review_rows(pi, params)
-    from ui import copilot_views
     copilot_views.render_smart_questions()
-    t_rooms, t_open, t_counts, t_struct, t_coef = st.tabs(
-        ["\U0001f3e0 Rooms", "\U0001f6aa Doors & windows", "\u2699\ufe0f Advanced: all counts & dimensions",
-         "\U0001f3d7\ufe0f Advanced: structure", "\U0001f4da Coefficients"], key="dmto_step3_tabs")
-    with t_struct:
-        if units.is_fps(unit_system):
-            st.caption("FPS units: lengths in feet, member sizes in inches, areas in sqft.")
-        legend = " ".join(confidence_badge(c) for c in [ConfidenceLevel.HIGH, ConfidenceLevel.MEDIUM, ConfidenceLevel.LOW])
-        st.markdown(f"Columns, beams, slab and footings used for concrete, steel and formwork. Confidence: {legend}",
-                    unsafe_allow_html=True)
-        params = _render_structure_inputs(params, unit_system)
-        st.session_state["extracted_params"] = params
+
+    section("\U0001f4cb Rooms, doors & windows", "Values marked \u26aa are standard sizes we assumed; \U0001f7e2 come from your drawings.")
+    t_rooms, t_open = st.tabs(["\U0001f3e0 Rooms", "\U0001f6aa Doors & windows"], key="dmto_step3_tabs")
     with t_rooms:
         room_rows = mto_views.render_rooms_editor()
         if st.session_state.get("input_mode") == "sketch":
             mto_views.render_concept_plan(room_rows)
     with t_open:
         opening_rows = mto_views.render_openings_editor()
-    with t_counts:
-        mto_views.render_counts_editor(pi, params, room_rows, opening_rows)
-    with t_coef:
-        mto_views.render_coefficients()
+
+    with st.expander("\u2699\ufe0f For engineers: all counts & dimensions, structure, coefficients"):
+        st.caption(mto_views.options_summary(st.session_state["dmto_options"]) + " (change in Step 1 \u2192 Advanced settings)")
+        t_counts, t_struct, t_coef = st.tabs(["All counts & dimensions", "Structure", "Coefficients"], key="dmto_step3_adv_tabs")
+        with t_struct:
+            if units.is_fps(unit_system):
+                st.caption("FPS units: lengths in feet, member sizes in inches, areas in sqft.")
+            legend = " ".join(confidence_badge(c) for c in [ConfidenceLevel.HIGH, ConfidenceLevel.MEDIUM, ConfidenceLevel.LOW])
+            st.markdown(f"Columns, beams, slab and footings used for concrete, steel and formwork. Confidence: {legend}",
+                        unsafe_allow_html=True)
+            params = _render_structure_inputs(params, unit_system)
+            st.session_state["extracted_params"] = params
+        with t_counts:
+            mto_views.render_counts_editor(pi, params, room_rows, opening_rows)
+        with t_coef:
+            mto_views.render_coefficients()
 
     dmto_errors = mto_views.render_validation(pi, params, room_rows, opening_rows)
     errors, warnings = validate_params(params, pi, st.session_state["assumptions"])
     errors = list(errors) + [f"{i.label} {i.message}" for i in dmto_errors]
-    if errors or warnings:
-        with st.expander(f"Input checks ({len(errors)} error(s), {len(warnings)} warning(s))", expanded=bool(errors)):
-            for e in errors:
-                st.error(e)
+    if warnings:
+        with st.expander(f"Technical checks ({len(warnings)} note(s))", expanded=False):
             for w in warnings:
                 st.warning(w)
-    st.caption("Table edits are kept when you press Apply, Calculate, Back or use the sidebar steps.")
 
     c1, c2, c3 = st.columns([1, 1, 2])
     with c1:
-        if st.button("\u2190 Back to Step 2"):
+        if st.button("\u2190 Back"):
             mto_views.save_review(room_rows, opening_rows)
             go_to_step(2)
             st.rerun()
     with c2:
-        if st.button("\U0001f504 Apply table edits", help="Saves the Rooms / Doors & windows tables and refreshes the counts derived from them."):
+        if st.button("\U0001f4be Save table changes", help="Saves the Rooms / Doors & windows tables and refreshes everything that depends on them."):
             mto_views.save_review(room_rows, opening_rows)
             st.rerun()
     with c3:
-        if st.button("Calculate Material Take-Off \u2192", type="primary", width="stretch", disabled=bool(errors)):
+        if st.button("Calculate materials \u2192", type="primary", width="stretch", disabled=bool(errors)):
             mto_views.save_review(room_rows, opening_rows)
-            with st.spinner("Calculating every material from the drawing data..."):
+            with st.spinner("Calculating every material for your house..."):
                 mto_views.run_takeoff(pi, params)
             go_to_step(4)
             st.rerun()
+    if errors:
+        st.caption("Fix the items marked in red above to continue.")

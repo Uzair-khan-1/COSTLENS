@@ -129,23 +129,59 @@ def _finish_step_2(params, used_ai: bool) -> None:
     go_to_step(3)
 
 
+def _render_found_summary(facts, scan) -> None:
+    """'What we found in your drawings' in plain words with big number cards."""
+    from ui.illustrations import stat_cards_html
+    floors = [f for k, f in facts.floors.items() if k != "roof"]
+    rooms = [r for f in floors for r in f.rooms]
+    area = sum(f.covered_sqft or 0 for f in floors)
+    from detailed_mto.builder import classify_room
+    from knowledge import load_knowledge_base
+    kb = load_knowledge_base()
+    kinds = {"bedroom": 0, "bathroom": 0, "kitchen": 0}
+    for r in rooms:
+        t = classify_room(r[0], r[3], kb)
+        key = {"Bedroom": "bedroom", "Bathroom": "bathroom", "Kitchen": "kitchen"}.get(t)
+        if key:
+            kinds[key] += 1
+    doors = facts.openings.get("doors_total", (None,))[0]
+    wins = sum(v[0] for k, v in facts.openings.items() if k.startswith("windows_"))
+    cards = [("\U0001f3e0", "Floors", f"{len(floors)}" + (" + mumty" if "roof" in facts.floors else ""), "read from plans"),
+             ("\U0001f4d0", "Covered area", f"{area:,.0f} sq ft", "all floors"),
+             ("\U0001f6cf\ufe0f", "Rooms with sizes", f"{len(rooms)}", f"{kinds.get('bedroom', 0)} bedrooms"),
+             ("\U0001f6bf", "Bathrooms", f"{kinds.get('bathroom', 0)}", "from room labels"),
+             ("\U0001f373", "Kitchens", f"{kinds.get('kitchen', 0)}", "")]
+    if doors:
+        cards.append(("\U0001f6aa", "Doors", f"{doors:.0f}", "door schedule"))
+    if wins:
+        cards.append(("\U0001fa9f", "Windows", f"{wins:.0f}", "sizes to confirm"))
+    if scan is not None and scan.get("FT"):
+        cards.append(("\U0001f6b0", "Floor traps", f"{scan.get('FT')}", "plumbing sheets"))
+    st.markdown("<div style='font-size:20px;font-weight:700;color:#0B1E3D;margin-top:6px'>\u2705 What we found in your drawings</div>",
+                unsafe_allow_html=True)
+    st.markdown(stat_cards_html(cards), unsafe_allow_html=True)
+    st.caption("You can correct anything in the next step. Sizes that are not on the drawings (e.g. window widths) "
+               "start from common standards and are marked for checking.")
+
+
 def step_2():
-    st.header("Step 2 \u00b7 Drawing Analysis")
+    from ui.guide import step_header
+    step_header(2)
     pi: ProjectInputs = st.session_state["project_inputs"]
 
     uploaded_files = st.session_state.get("uploaded_files") or []
     if not uploaded_files:
         if pi.plot_marla:
             st.info(
-                f"No drawing uploaded - a typical {pi.plot_marla:g} marla house will be used as the starting point. "
-                "You can review and edit every value in Step 3, or go back and upload the drawings."
+                f"No drawing uploaded - we start from a typical {pi.plot_marla:g} marla house. "
+                "You can check and change every room and size in the next step, or go back and upload the drawings."
             )
         else:
             st.info("No drawing was uploaded. You can go back to upload one, or skip straight to manual entry with standard defaults.")
         if st.button("\u2190 Back to Step 1"):
             go_to_step(1)
             st.rerun()
-        if st.button("Skip AI \u2014 enter parameters manually", type="primary"):
+        if st.button("Continue with a typical house \u2192", type="primary"):
             _finish_step_2(base_params(pi), used_ai=False)
             st.rerun()
         return
@@ -167,56 +203,46 @@ def step_2():
     images = st.session_state["uploaded_images"]
     labels = st.session_state.get("uploaded_image_labels") or []
 
-    st.markdown("##### \U0001f4d0 Drawing set analysis (free \u2014 no AI)")
-    st.caption("CAD-exported PDFs are read directly: sheet types, room names and sizes, wall lengths by thickness, levels, "
-               "foundation sections, schedules and service labels. The AI is optional.")
+    # ---- friendly summary of what was read -------------------------------------
     if facts.has_facts():
-        _, _, preview = apply_package_facts(base_params(pi), facts, pi)
-        st.success(
-            f"Read {len(preview)} value(s) directly from the drawings: {', '.join(preview)}. "
-            "These override AI and template values and are marked 'From drawings' in Step 3."
-        )
+        _render_found_summary(facts, st.session_state.get("dmto_scan"))
     else:
         mto_views.render_drawing_mode_banner("scanned")
-    sheet_rows = [
-        {"File": sh.file_name, "Page": sh.page_no, "Detected views": ", ".join(sh.views),
-         "Read from drawing": " | ".join(sh.findings) if sh.findings else "-"}
-        for sh in facts.sheets
-    ]
-    if sheet_rows:
-        st.dataframe(pd.DataFrame(sheet_rows), width="stretch", hide_index=True)
-    for c in facts.conflicts:
-        st.warning(c)
-    mto_views.render_scan_summary(st.session_state.get("dmto_scan"))
 
-    if images:
-        st.markdown(f"##### Pages the AI will read ({len(images)} of max {config.MAX_TOTAL_IMAGES})")
-        cols = st.columns(min(len(images), 4) or 1)
-        for i, img in enumerate(images):
-            with cols[i % len(cols)]:
-                st.image(img, caption=labels[i] if i < len(labels) else f"Page {i+1}", width="stretch")
-                if not estimate_is_drawing_like(img):
-                    st.caption("\u26a0\ufe0f This doesn't look like a typical line drawing \u2014 results may be unreliable.")
-
-    if ocr_available():
-        with st.expander("OCR text hints (used to help the AI, not for calculations)"):
+    with st.expander("\U0001f50e Sheet-by-sheet details (for engineers)"):
+        if facts.has_facts():
+            _, _, preview = apply_package_facts(base_params(pi), facts, pi)
+            st.caption(f"Read {len(preview)} value(s) directly from the drawings: {', '.join(preview)}.")
+        sheet_rows = [
+            {"File": sh.file_name, "Page": sh.page_no, "Detected views": ", ".join(sh.views),
+             "Read from drawing": " | ".join(sh.findings) if sh.findings else "-"}
+            for sh in facts.sheets
+        ]
+        if sheet_rows:
+            st.dataframe(pd.DataFrame(sheet_rows), width="stretch", hide_index=True)
+        mto_views.render_scan_summary(st.session_state.get("dmto_scan"))
+        if images:
+            st.markdown(f"**Pages the AI would read** ({len(images)} of max {config.MAX_TOTAL_IMAGES})")
+            cols = st.columns(min(len(images), 4) or 1)
+            for i, img in enumerate(images):
+                with cols[i % len(cols)]:
+                    st.image(img, caption=labels[i] if i < len(labels) else f"Page {i+1}", width="stretch")
+                    if not estimate_is_drawing_like(img):
+                        st.caption("\u26a0\ufe0f This doesn't look like a typical line drawing \u2014 results may be unreliable.")
+        if ocr_available():
             if not st.session_state.get("ocr_hint_text"):
                 with st.spinner("Running OCR..."):
                     hints = [build_ocr_hint_text(img) for img in images]
                     st.session_state["ocr_hint_text"] = "\n".join(h for h in hints if h)
-            st.text(st.session_state["ocr_hint_text"] or "No text detected.")
-    else:
-        st.caption(
-            "Optional OCR (EasyOCR) is not installed in this deployment \u2014 it is heavy for free hosting. "
-            "Install it with `pip install -r requirements-ocr.txt` to enable. Vector PDFs are read directly (above)."
-        )
-
-    if st.session_state.get("pdf_text_hint"):
-        with st.expander("Hints passed to the AI (known values + PDF text)"):
+            st.text(st.session_state["ocr_hint_text"] or "No OCR text detected.")
+        if st.session_state.get("pdf_text_hint"):
+            st.markdown("**Hints passed to the AI**")
             st.text(st.session_state["pdf_text_hint"])
+    for c in facts.conflicts:
+        st.warning("\u26a0\ufe0f " + c)
 
     project_context = st.text_area(
-        "Additional context for the AI (optional)",
+        "Anything the AI should know? (optional)",
         placeholder="e.g. 'This is a G+1 house, footings are isolated RCC pad footings, drawing is not to exact scale...'",
     )
     # Wall material/thickness are rarely labelled on a simple line drawing;
@@ -237,12 +263,12 @@ def step_2():
     with c1:
         _readable = facts.has_facts()
         skip_clicked = st.button(
-            "Continue with drawing data \u2192" if _readable else "Continue with typical-house values \u2192",
+            "\u2705 Looks right - continue \u2192" if _readable else "Continue with typical-house values \u2192",
             type="primary" if _readable else "secondary", width="stretch",
             help="Recommended for CAD PDFs: everything read from the drawings is used; defaults fill the rest." if _readable
             else "Nothing could be read from these drawings - Step 3 will start from a typical house that you must correct.")
     with c2:
-        analyze_clicked = st.button("\U0001f9e0 Also ask the AI for missing values", width="stretch",
+        analyze_clicked = st.button("\U0001f9e0 Also ask the AI to fill gaps (optional)", width="stretch",
                                     help="Optional. Sends the most useful pages (automatically resized to fit the free AI limits) to the vision model "
                                          "for values not read from the drawings.")
 

@@ -106,7 +106,7 @@ def reset_project():
 DMTO_DERIVED_KEYS = ["dmto_scan", "dmto_rooms", "dmto_openings", "dmto_overrides", "dmto_result", "dmto_xlsx", "dmto_floors"]
 COPILOT_KEYS = ["copilot_msgs", "copilot_props", "copilot_undo", "copilot_scenarios"]
 BRIEF_KEYS = ["input_mode", "brief", "brief_ver", "sketch_files", "brief_ai_json", "brief_ai_got", "brief_used_ai",
-              "brief_rooms_live", "sketch_uploader", "brief_added"]
+              "brief_rooms_live", "sketch_uploader", "brief_added", "ui_choice"]
 
 
 def clear_dmto_review() -> None:

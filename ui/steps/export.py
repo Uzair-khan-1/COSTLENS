@@ -14,72 +14,71 @@ from ui.state import go_to_step, reset_project
 # STEP 5 — Export
 # ---------------------------------------------------------------------------
 def step_5():
-    st.header("Step 5 \u00b7 Export")
+    from ui.guide import section, step_header
+    step_header(5)
     pi: ProjectInputs = st.session_state["project_inputs"]
     res = mto_views.ensure_current_result(pi, st.session_state.get("extracted_params"))
-    if res is not None:
-        mto_views.render_drawing_mode_banner(res.project.drawing_mode)
     if res is None:
-        st.info("Calculate the material take-off first (Step 3).")
-        if st.button("\u2190 Back to Step 3"):
+        st.info("Calculate the materials first (Step 3 \u2192 'Calculate materials').")
+        if st.button("\u2190 Back to check details"):
             go_to_step(3)
             st.rerun()
         return
-    counts = res.status_counts()
-    st.markdown(
-        f"**{pi.project_name}** \u2014 scope **{res.scope}**: {len(res.scoped_materials())} materials in scope, "
-        f"{len(res.purchase_list())} to purchase, {counts.get('Needs input', 0)} need input. "
-        "Materials outside the selected scope are not included in the files."
-    )
-    name = (pi.project_name or "Project").replace(" ", "_")
+    mto_views.render_drawing_mode_banner(res.project.drawing_mode)
+    name = ((pi.project_name if pi.project_name not in ("", "Untitled Project") else "My_house") or "My_house").replace(" ", "_")
     from detailed_mto.shopping import shopping_pdf, shopping_text
+    from urllib.parse import quote
 
-    st.markdown("##### \U0001f4e6 Full take-off")
-    e1, e2 = st.columns(2)
-    with e1:
-        st.download_button(
-            "\U0001f4e6 Material Take-Off workbook (Excel)", data=mto_views.export_bytes(res),
-            file_name=f"{name}_Material_TakeOff.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", width="stretch", type="primary",
-        )
-    with e2:
-        st.download_button("\U0001f4c4 Material schedule (CSV)", data=mto_views.schedule_csv(res),
+    counts = res.status_counts()
+    st.markdown(f"**{len(res.purchase_list())} materials to buy** and a **Bill of Quantities** for "
+                f"*{pi.project_name if pi.project_name not in ('', 'Untitled Project') else 'your house'}*" + (f" \u2014 {counts.get('Needs input')} item(s) still need your input."
+                                                         if counts.get("Needs input") else "."))
+
+    c1, c2, c3 = st.columns(3)
+    with c1.container(border=True):
+        st.markdown("<div style='font-size:34px'>\U0001f477</div><b>For your contractor</b>", unsafe_allow_html=True)
+        st.caption("Excel workbook: shopping list, Bill of Quantities, stage-wise purchases and every calculation. "
+                   "Contractors can add their rates to the BOQ sheet.")
+        st.download_button("\u2b07\ufe0f Excel workbook", data=mto_views.export_bytes(res), file_name=f"{name}_Materials_and_BOQ.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", width="stretch", type="primary")
+        st.download_button("\u2b07\ufe0f Material list (CSV)", data=mto_views.schedule_csv(res),
                            file_name=f"{name}_Material_Schedule.csv", mime="text/csv", width="stretch")
-    st.caption(
-        "The workbook opens on a **Summary** for non-technical readers (main materials + a shopping list of every material, "
-        "grouped by trade, in purchase units, with when it is needed and how reliable it is). Detail sheets: Material_Schedule "
-        "(editable wastage), Procurement_by_Stage, BOQ_Work_Items, Material_Breakdown, Project_Inputs, Rooms, Openings, "
-        "Assumptions_Gaps and Benchmarks - all with links and filter buttons."
-    )
-
-    st.markdown("##### \U0001f4f2 Share the shopping list")
     trades = list(dict.fromkeys(m.material.category for m in res.purchase_list()))
-    pick = st.multiselect("Trades to include (e.g. only what one supplier sells)", trades, default=[],
-                          placeholder="All trades", key="share_trades")
-    text = shopping_text(res, pick or None)
-    s1, s2, s3 = st.columns(3)
-    with s1:
-        st.download_button("\U0001f4dd Text for WhatsApp / SMS", data=text.encode("utf-8"),
-                           file_name=f"{name}_shopping_list.txt", mime="text/plain", width="stretch")
-    with s2:
+    with c2.container(border=True):
+        st.markdown("<div style='font-size:34px'>\U0001f3ea</div><b>For shops &amp; suppliers</b>", unsafe_allow_html=True)
+        st.caption("A clean shopping list - all materials, or only what one shop sells (e.g. only sanitary or electrical).")
+        pick = st.multiselect("Only these trades", trades, default=[], placeholder="All trades", key="share_trades")
+        text = shopping_text(res, pick or None)
         st.download_button("\U0001f5a8\ufe0f Shopping list (PDF)", data=lambda: shopping_pdf(res), file_name=f"{name}_shopping_list.pdf",
                            mime="application/pdf", width="stretch")
-    with s3:
-        from urllib.parse import quote
-        short = text if len(text) < 1800 else text[:1750] + "\n... (full list in the attached file)"
-        st.link_button("\U0001f4ac Open in WhatsApp", f"https://wa.me/?text={quote(short)}", width="stretch",
-                       help="Opens WhatsApp with the list ready to send (long lists are shortened - send the text/PDF file instead).")
-    with st.expander("Preview / copy the text"):
-        st.code(text, language=None)
+        short = text if len(text) < 1800 else text[:1750] + "\n... (full list in the PDF)"
+        st.link_button("\U0001f4ac Send on WhatsApp", f"https://wa.me/?text={quote(short)}", width="stretch",
+                       help="Opens WhatsApp with the list ready to send. Long lists are shortened - send the PDF instead.")
+        st.download_button("\U0001f4dd Text file", data=text.encode("utf-8"), file_name=f"{name}_shopping_list.txt",
+                           mime="text/plain", width="stretch")
+    with c3.container(border=True):
+        st.markdown("<div style='font-size:34px'>\U0001f4be</div><b>Keep your project</b>", unsafe_allow_html=True)
+        st.caption("Save the project file and open it later (sidebar \u2192 Project: save / open) to change rooms, "
+                   "compare options or add prices when available.")
+        from persistence.project_file import project_to_json
+        keys = ("project_inputs", "extracted_params", "input_mode", "dmto_options", "dmto_rooms", "dmto_openings",
+                "dmto_overrides", "dmto_floors", "package_facts", "dmto_scan", "uploaded_signature", "drawing_filled",
+                "brief", "copilot_scenarios", "copilot_msgs", "uploaded_files", "step", "max_step")
+        snap = {k: st.session_state.get(k) for k in keys}
+        st.download_button("\u2b07\ufe0f Project file", data=lambda: project_to_json(snap, False), file_name=f"{name}.costlens.json",
+                           mime="application/json", width="stretch")
 
-    st.caption("Costs are intentionally excluded - pricing will be added as a separate step. "
+    with st.expander("\U0001f440 Preview the shopping list text"):
+        st.code(text, language=None)
+    section("", "")
+    st.caption("Prices are not included yet - they will be added as a separate step. "
                f"\u26a0\ufe0f {config.DISCLAIMER_TEXT_SHORT}")
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("\u2190 Back to Step 4 (Material Take-Off)"):
+    b1, b2 = st.columns(2)
+    with b1:
+        if st.button("\u2190 Back to materials"):
             go_to_step(4)
             st.rerun()
-    with c2:
-        if st.button("\U0001f504 Start a new project", width="stretch"):
+    with b2:
+        if st.button("\U0001f504 Start a new house", width="stretch"):
             reset_project()
             st.rerun()

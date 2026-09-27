@@ -18,6 +18,7 @@ import streamlit as st
 from detailed_mto.brief import (FLOORS, ROOM_TYPES, BriefRoom, ProjectBrief, add_attached_baths, apply_ai_result,
                                 brief_summary, brief_to_inputs, complete_programme, parse_description, typical_rooms)
 from detailed_mto.model import Options
+from ui.illustrations import tip_box_html
 from models.schemas import ConfidenceLevel, Estimate, Source
 
 ROOM_COLS = ["Floor", "Room", "Room type", "Length (ft)", "Width (ft)", "Source"]
@@ -68,9 +69,15 @@ def _rows_to_brief_rooms(rows: List[dict], old: List[BriefRoom]) -> List[BriefRo
 
 
 def render_brief_step(pi, go_to_step, groq_key: str) -> None:
-    st.header("Step 2 \u00b7 Your House Requirements")
-    st.write("No architect's drawings? No problem. Show us a sketch or photo and/or describe the house, then answer "
-             "a few simple questions. We turn your answers into a concept layout and calculate every material.")
+    from ui.guide import step_header
+    step_header(2, show_tips=False)
+    idea = st.session_state.get("ui_choice") == "idea"
+    st.markdown(tip_box_html("What to do here", [
+        ("Describe your house in your own words" if idea else "Upload a photo of your sketch and/or describe the house") +
+        " - e.g. '5 marla, double storey, 4 bedrooms with attached baths'.",
+        "Press 'Read my description' (or the AI button). Then check the 6 short sections below.",
+        "Press 'Create my project' at the bottom."], "اپنے گھر کی تفصیل لکھیں اور نیچے کے سوالات چیک کریں"),
+        unsafe_allow_html=True)
     b = _brief(pi)
     v = _ver()
     from ai.llm import keys_from_mapping

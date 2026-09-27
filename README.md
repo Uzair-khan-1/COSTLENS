@@ -1,4 +1,4 @@
-# CostLens — *From plans to materials.* (v0.8.1)
+# CostLens — *From plans to materials.* (v0.9.0)
 
 A drawing-based **Material Take-Off (MTO)** tool for 5-10 marla houses in
 Pakistan. Upload the complete drawing set (CAD-exported PDFs work best); the
@@ -571,6 +571,22 @@ lines). See **[DETAILED_MTO.md](DETAILED_MTO.md)**.
 ---
 
 ## 8. Changelog
+
+**v0.9.0 — easy for non-technical users (land owners)**
+- Plain-language steps: *Your plot -> Your house design -> Check details -> Materials & BOQ -> Download*,
+  each with a short "what to do here" box and an Urdu hint (tips can be switched off in the sidebar).
+- Illustrations: "how it works" strip, picture cards for *architect's drawings / hand sketch / just an idea*,
+  a live plot diagram (size, road, house) and a house elevation for the chosen number of floors.
+- Pakistani defaults by city (marla size 272.25 / 225, CDA recharge well for Islamabad), 9" walls, 1:2:4
+  concrete, brick walls, Sui gas, earthquake bands, Standard finish - all technical choices moved to
+  "Advanced settings (for engineers)".
+- Step 2 shows "What we found in your drawings" as big cards; sheet-by-sheet details moved to an expander.
+- Step 3 starts with a "Your house" summary and "quick questions" in plain words; engineer tables are grouped.
+- Step 4: big material cards, "Things to double-check before you buy", and tabs *What to buy / Bill of
+  Quantities / When to buy / Ask the assistant / For engineers*. New plain **BOQ** (sections A-Z in the usual
+  Pakistani order) in the app and as a BOQ sheet in the Excel file (rates left for contractors).
+- Step 5: three cards - for your contractor (Excel), for shops (PDF / WhatsApp / text), keep your project.
+- Sidebar: "Words explained" glossary (marla, mumty, MTO, BOQ, PCC, RCC, sarya, bajri, DPC ...).
 
 **v0.8.1 — works within free AI limits**
 - Fixes Groq free-tier `413 Request too large ... input tokens per minute (ITPM)`: every AI request is

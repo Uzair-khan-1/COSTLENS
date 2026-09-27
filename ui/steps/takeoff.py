@@ -13,7 +13,8 @@ from ui.state import go_to_step
 # STEP 4 — Material take-off
 # ---------------------------------------------------------------------------
 def step_4():
-    st.header("Step 4 \u00b7 Material Take-Off")
+    from ui.guide import step_header
+    step_header(4)
     pi: ProjectInputs = st.session_state["project_inputs"]
     if st.session_state.get("extracted_params") is None:
         st.info("Complete Steps 1-3 first.")
@@ -28,16 +29,14 @@ def step_4():
             st.rerun()
         return
     mto_views.render_drawing_mode_banner(res.project.drawing_mode)
-    st.caption(mto_views.options_summary(st.session_state["dmto_options"]) +
-               " \u00b7 All quantities in Pakistani FPS units (cft, sft, rft, bags, kg, Nos). Costs are not included in this version.")
     mto_views.render_takeoff(res)
 
     c1, c2 = st.columns(2)
     with c1:
-        if st.button("\u2190 Back to Step 3 (review data)"):
+        if st.button("\u2190 Back to check details"):
             go_to_step(3)
             st.rerun()
     with c2:
-        if st.button("Continue to Export \u2192", type="primary", width="stretch"):
+        if st.button("Next: download & share \u2192", type="primary", width="stretch"):
             go_to_step(5)
             st.rerun()

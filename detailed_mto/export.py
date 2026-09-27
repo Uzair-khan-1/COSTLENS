@@ -288,6 +288,34 @@ def build_detailed_mto_workbook(result: DetailedResult) -> bytes:
     _status_formatting(ws2, "H", 4, r - 1)
     ws2.sheet_properties.outlinePr.summaryBelow = False
 
+    # ============================== BOQ (plain sections) =======================
+    from detailed_mto.boq import boq_rows
+    brows = boq_rows(result)
+    wsb = _titled_sheet(wb, "BOQ", "Bill of Quantities - work to be done",
+                        "Measured work items in the usual order. Give this to contractors to quote their rates "
+                        "(prices are not part of this version). \u26a0 = based on a standard size, please confirm.",
+                        ["No.", "Section", "Description of work", "Unit", "Quantity", "Check"], [6, 26, 60, 8, 13, 7])
+    last_sec = None
+    r = 4
+    for row in brows:
+        if row["Section"] != last_sec:
+            last_sec = row["Section"]
+            _cell(wsb, r, 1, None, fill=CAT_FILL)
+            _cell(wsb, r, 2, last_sec, bold=True, fill=CAT_FILL)
+            for c in range(3, 7):
+                _cell(wsb, r, c, None, fill=CAT_FILL)
+            r += 1
+        _cell(wsb, r, 1, row["No."])
+        _cell(wsb, r, 2, row["Section"], color="94A3B8")
+        _cell(wsb, r, 3, _txt(row["Description of work"]))
+        _cell(wsb, r, 4, row["Unit"])
+        _cell(wsb, r, 5, row["Quantity"], fmt="#,##0.00", bold=True)
+        _cell(wsb, r, 6, row["Check"])
+        wsb.row_dimensions[r].outlineLevel = 1
+        r += 1
+    wsb.sheet_properties.outlinePr.summaryBelow = False
+    wsb.freeze_panes = "C4"
+
     # ============================== BOQ_Work_Items ============================
     wis = result.scoped_work_items()
     ws3 = _titled_sheet(wb, "BOQ_Work_Items", "Measured work items (quantities only)",
@@ -449,6 +477,7 @@ def build_detailed_mto_workbook(result: DetailedResult) -> bytes:
     ws9.conditional_formatting.add(f"F5:F{rr}", FormulaRule(formula=['$F5="CHECK"'], fill=PatternFill("solid", fgColor="FFC7CE")))
 
     _build_summary(summary, result, mats, sched_row, SCH_ID, SCH_QTY, last)
+    wb.move_sheet("BOQ", offset=2 - wb.sheetnames.index("BOQ"))  # Summary, Material_Schedule, BOQ, ...
 
     bio = BytesIO()
     wb.save(bio)
@@ -503,7 +532,8 @@ def _build_summary(ws, result: DetailedResult, mats: List[MaterialLine], sched_r
         ("Shopping list - all materials to buy (further down this page)", None),
         ("Material_Schedule - full detail of every material", "Material_Schedule"),
         ("Procurement_by_Stage - what to buy at each construction stage", "Procurement_by_Stage"),
-        ("BOQ_Work_Items - measured quantities", "BOQ_Work_Items"),
+        ("BOQ - Bill of Quantities (work to be done, for contractors)", "BOQ"),
+        ("BOQ_Work_Items - measured quantities with calculations", "BOQ_Work_Items"),
         ("Material_Breakdown - how each quantity was calculated", "Material_Breakdown"),
         ("Project_Inputs / Rooms / Openings - data read from the drawings", "Project_Inputs"),
         ("Assumptions_Gaps - things to check before buying", "Assumptions_Gaps"),

@@ -73,6 +73,27 @@ def undo_last() -> str:
 # ---------------------------------------------------------------------------
 # Step 3: most important questions
 # ---------------------------------------------------------------------------
+def _friendly_source(src: str) -> str:
+    s = (src or "").lower()
+    if "room_finish_defaults" in s or "room type" in s:
+        return "standard for your room types"
+    if "derived" in s or "=" in s:
+        return "worked out from your drawings"
+    if "label" in s or "drawing" in s or ".pdf" in s:
+        return "read from your drawings"
+    if "user" in s:
+        return "your answer"
+    return "common standard"
+
+
+def _friendly_drivers(drivers) -> str:
+    out = []
+    for d in drivers[:2]:
+        name, pct = d.rsplit(" ", 1)
+        out.append(f"{name.lower()} by about {pct.lstrip('+-')}")
+    return "changes " + " and ".join(out) if out else "changes several items"
+
+
 def render_smart_questions() -> None:
     try:
         state = state_from_session()
@@ -81,11 +102,11 @@ def render_smart_questions() -> None:
         st.caption(f"Smart questions unavailable: {exc}")
         return
     if not sens:
-        st.success("\U0001f3af The inputs that affect the quantities most are already confirmed.")
+        st.success("\U0001f3af All the important details are confirmed.")
         return
-    with st.expander(f"\U0001f3af Most important questions ({len(sens)}) - answer these first", expanded=True):
-        st.caption("These inputs are still defaults and move your main materials the most (ranked). "
-                   "Answer what you know; skip the rest.")
+    with st.expander(f"\U0001f3af {len(sens)} quick questions - answer what you know", expanded=True):
+        st.caption("These are the things that change your material quantities the most. We used common standards - "
+                   "if you know better, pick an answer and press 'Apply my answers'. Skip what you don't know.")
         answers = {}
         for s in sens:
             q, kind, choices = A.QUESTION_BANK.get(s.key, (f"{s.label} ({s.unit})?", "number", []))
@@ -96,21 +117,21 @@ def render_smart_questions() -> None:
                 now = match[0] if match else ("4' x 5' (assumed)" if s.key == A.WINDOW_TEST else now)
             with c1:
                 st.markdown(f"**{q}**  \n<span style='color:#6b7280;font-size:0.85em'>Now: {now}"
-                            f" ({s.source[:60]}) · affects {', '.join(s.drivers) or 'several items'}</span>",
+                            f" ({_friendly_source(s.source)}) \u00b7 {_friendly_drivers(s.drivers)}</span>",
                             unsafe_allow_html=True)
             with c2:
                 key = f"sq_{s.key}_{st.session_state.get('dmto_counts_ver', 0)}"
                 if kind == "choice":
-                    labels = ["(keep)"] + [lbl for lbl, _v in choices]
+                    labels = ["Keep as is"] + [lbl for lbl, _v in choices]
                     pick = st.selectbox(q, labels, key=key, label_visibility="collapsed")
-                    if pick != "(keep)":
+                    if pick != "Keep as is":
                         answers[s.key] = dict(choices)[pick]
                 else:
-                    presets = ["(keep)"] + [f"{c:g}" for c in choices] + ["Other..."]
+                    presets = ["Keep as is"] + [f"{c:g}" for c in choices] + ["Other..."]
                     pick = st.selectbox(q, presets, key=key, label_visibility="collapsed")
                     if pick == "Other...":
                         answers[s.key] = st.number_input("Value", value=float(s.value), key=key + "_n", label_visibility="collapsed")
-                    elif pick != "(keep)":
+                    elif pick != "Keep as is":
                         answers[s.key] = float(pick)
         if st.button("Apply my answers", type="primary", disabled=not answers, key="sq_apply"):
             changes = []
@@ -142,7 +163,8 @@ def render_checker(res) -> None:
         return
     n_prob = sum(f.severity == "problem" for f in findings)
     n_chk = sum(f.severity == "check" for f in findings)
-    title = f"\U0001f50e Take-off check - {n_prob} problem(s), {n_chk} thing(s) to check"
+    title = (f"\U0001f50e Things to double-check before you buy - {n_prob} problem(s), {n_chk} to check"
+             if (n_prob or n_chk) else "\U0001f50e Things to double-check before you buy")
     with st.expander(title, expanded=n_prob > 0):
         for i, f in enumerate(findings):
             c1, c2 = st.columns([5, 2])
