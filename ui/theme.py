@@ -70,7 +70,7 @@ html, body, [class*="css"] {{
 /* ---------------------------------------------------------------- *
  * Headings
  * ---------------------------------------------------------------- */
-h1, h2, h3 {{ color: {config.BRAND_NAVY}; font-weight: 700; }}
+h1, h2, h3 {{ font-weight: 700; }}
 
 /* ---------------------------------------------------------------- *
  * Buttons
@@ -100,15 +100,15 @@ h1, h2, h3 {{ color: {config.BRAND_NAVY}; font-weight: 700; }}
  * Metric cards (Step 5: Subtotal / Contingency / Grand Total)
  * ---------------------------------------------------------------- */
 [data-testid="stMetric"] {{
-    background: #FFFFFF;
+    background: rgba(127, 127, 127, 0.06);  /* neutral tint: readable in light and dark themes */
     border: 1px solid rgba(11, 30, 61, 0.08);
     border-left: 4px solid {config.BRAND_TEAL};
     border-radius: 12px;
     padding: 14px 18px;
     box-shadow: 0 2px 10px rgba(11, 30, 61, 0.05);
 }}
-[data-testid="stMetricLabel"] {{ color: {config.BRAND_NAVY}; font-weight: 600; }}
-[data-testid="stMetricValue"] {{ color: {config.BRAND_NAVY}; }}
+[data-testid="stMetricLabel"] {{ font-weight: 600; }}
+
 
 /* ---------------------------------------------------------------- *
  * Expanders (Steps 3 / 4 / 5 rely on these heavily)

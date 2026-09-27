@@ -44,7 +44,7 @@ def floor_svg(rooms: List[dict], width_ft: float, title: str, px_per_ft: float =
     pad = 20
     W, H = width_ft * s + 2 * pad, depth * s + 2 * pad + 22
     out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W:.0f} {H:.0f}" width="100%" style="max-width:{W:.0f}px;'
-           f'font-family:Arial,sans-serif">',
+           f'font-family:Arial,sans-serif"><rect x="0" y="0" width="{W:.0f}" height="{H:.0f}" rx="10" fill="#FFFFFF"/>',
            f'<text x="{pad}" y="16" font-size="13" font-weight="bold" fill="#1F3864">{escape(title)}'
            f' ({width_ft:.0f} ft wide)</text>',
            f'<rect x="{pad}" y="{pad + 8}" width="{width_ft * s:.1f}" height="{depth * s:.1f}" fill="none" stroke="#1F3864" stroke-width="3"/>']

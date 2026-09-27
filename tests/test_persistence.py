@@ -94,4 +94,4 @@ def test_concept_plan_svg():
     svg = floor_svg([{"Room": "BED", "Room type": "Bedroom", "Length (ft)": 12, "Width (ft)": 13},
                      {"Room": "PORCH", "Room type": "Porch / car porch", "Length (ft)": 12, "Width (ft)": 17},
                      {"Room": "x", "Room type": "Bathroom", "Length (ft)": "bad", "Width (ft)": 5}], 30, "Ground floor")
-    assert svg.startswith("<svg") and "BED" in svg and "PORCH" in svg and svg.count("<rect") == 3
+    assert svg.startswith("<svg") and "BED" in svg and "PORCH" in svg and svg.count("<rect") == 4  # background panel + outline + 2 rooms

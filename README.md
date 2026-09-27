@@ -1,4 +1,4 @@
-# CostLens — *From plans to materials.* (v0.9.0)
+# CostLens — *From plans to materials.* (v0.9.1)
 
 A drawing-based **Material Take-Off (MTO)** tool for 5-10 marla houses in
 Pakistan. Upload the complete drawing set (CAD-exported PDFs work best); the
@@ -571,6 +571,14 @@ lines). See **[DETAILED_MTO.md](DETAILED_MTO.md)**.
 ---
 
 ## 8. Changelog
+
+**v0.9.1 — readable in dark mode, owner-friendly quick questions**
+- Headings, card titles and descriptions now follow the theme text colour, and every illustration sits on
+  its own light panel - readable in both light and dark mode (Streamlit Settings -> Theme).
+- Step 3 "quick questions" rewritten for home owners: everyday questions with ready-made answers worked out
+  from their own house (e.g. "Where will you install ACs? No AC / Bedrooms only (5) / Bedrooms + lounges (8)"),
+  "Our guess" shown, stars for how much it changes the materials, and a "Not sure - keep our guess" choice.
+  Technical questions (PCC, columns, footings ...) moved to an optional "for your engineer" section.
 
 **v0.9.0 — easy for non-technical users (land owners)**
 - Plain-language steps: *Your plot -> Your house design -> Check details -> Materials & BOQ -> Download*,

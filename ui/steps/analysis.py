@@ -157,7 +157,7 @@ def _render_found_summary(facts, scan) -> None:
         cards.append(("\U0001fa9f", "Windows", f"{wins:.0f}", "sizes to confirm"))
     if scan is not None and scan.get("FT"):
         cards.append(("\U0001f6b0", "Floor traps", f"{scan.get('FT')}", "plumbing sheets"))
-    st.markdown("<div style='font-size:20px;font-weight:700;color:#0B1E3D;margin-top:6px'>\u2705 What we found in your drawings</div>",
+    st.markdown("<div style='font-size:20px;font-weight:700;color:inherit;margin-top:6px'>\u2705 What we found in your drawings</div>",
                 unsafe_allow_html=True)
     st.markdown(stat_cards_html(cards), unsafe_allow_html=True)
     st.caption("You can correct anything in the next step. Sizes that are not on the drawings (e.g. window widths) "

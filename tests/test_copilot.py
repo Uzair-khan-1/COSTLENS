@@ -170,3 +170,17 @@ def test_agent_reports_bad_key(state):
         chat = NS(completions=NS(create=lambda **kw: (_ for _ in ()).throw(RuntimeError("Error code: 401 - invalid api key"))))
     reply = run_agent("key", state, [], "hi", client=Unauthorized())
     assert "key was rejected" in reply.error
+
+
+def test_owner_questions_are_plain_and_answerable(state):
+    from copilot.owner_questions import ENGINEER_KEYS, split_questions
+    sens = A.sensitivity(state, top_n=24)
+    owner, engineer = split_questions(sens, build(state))
+    assert owner, "at least one owner question"
+    for q in owner:
+        assert q.key not in ENGINEER_KEYS and q.question.endswith("?") and len(q.options) >= 2 and q.current
+        assert "(ft)" not in q.question and "PCC" not in q.question  # no technical jargon for owners
+        # every answer turns into a valid change
+        _s2, descs, probs = apply_changes(state, A.changes_for_answer(state, q.key, q.options[-1][1]))
+        assert descs and not probs, (q.key, probs)
+    assert all(e.key in ENGINEER_KEYS for e in engineer)

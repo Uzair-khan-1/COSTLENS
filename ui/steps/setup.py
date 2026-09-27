@@ -38,8 +38,8 @@ def _choice_cards() -> str:
     for col, (key, (title, desc, art)) in zip(cols, CHOICES.items()):
         with col.container(border=True):
             st.markdown(art(), unsafe_allow_html=True)
-            st.markdown(f"<div style='font-weight:700;color:#0B1E3D;font-size:16px'>{title}</div>"
-                        f"<div style='color:#64748B;font-size:13.5px;min-height:62px;margin:2px 0 6px 0'>{desc}</div>",
+            st.markdown(f"<div style='font-weight:700;color:inherit;font-size:16px'>{title}</div>"
+                        f"<div style='opacity:.72;font-size:13.5px;min-height:62px;margin:2px 0 6px 0'>{desc}</div>",
                         unsafe_allow_html=True)
             chosen = key == cur
             if st.button("\u2713 Selected" if chosen else "Choose", key=f"choice_{key}", width="stretch",

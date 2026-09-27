@@ -94,59 +94,76 @@ def _friendly_drivers(drivers) -> str:
     return "changes " + " and ".join(out) if out else "changes several items"
 
 
+KEEP = "Not sure - keep our guess"
+
+
 def render_smart_questions() -> None:
+    """Step 3: plain-language questions for the owner (answers worked out from their own house),
+    ranked by how much they change the materials; technical ones are kept for the engineer."""
+    from copilot.owner_questions import split_questions, stars
+    from copilot.state import build
     try:
         state = state_from_session()
-        sens = A.sensitivity(state, top_n=6)
+        sens = A.sensitivity(state, top_n=24)
+        owner, engineer = split_questions(sens, build(state))
     except Exception as exc:  # never block Step 3
-        st.caption(f"Smart questions unavailable: {exc}")
+        st.caption(f"Quick questions unavailable: {exc}")
         return
-    if not sens:
-        st.success("\U0001f3af All the important details are confirmed.")
-        return
-    with st.expander(f"\U0001f3af {len(sens)} quick questions - answer what you know", expanded=True):
-        st.caption("These are the things that change your material quantities the most. We used common standards - "
-                   "if you know better, pick an answer and press 'Apply my answers'. Skip what you don't know.")
-        answers = {}
-        for s in sens:
-            q, kind, choices = A.QUESTION_BANK.get(s.key, (f"{s.label} ({s.unit})?", "number", []))
-            c1, c2 = st.columns([3, 2])
-            now = f"{s.value:g} {s.unit if s.unit != '-' else ''}"
-            if kind == "choice":
-                match = [lbl for lbl, v in choices if not isinstance(v, tuple) and abs(float(v) - s.value) < 0.05]
-                now = match[0] if match else ("4' x 5' (assumed)" if s.key == A.WINDOW_TEST else now)
-            with c1:
-                st.markdown(f"**{q}**  \n<span style='color:#6b7280;font-size:0.85em'>Now: {now}"
-                            f" ({_friendly_source(s.source)}) \u00b7 {_friendly_drivers(s.drivers)}</span>",
-                            unsafe_allow_html=True)
-            with c2:
-                key = f"sq_{s.key}_{st.session_state.get('dmto_counts_ver', 0)}"
-                if kind == "choice":
-                    labels = ["Keep as is"] + [lbl for lbl, _v in choices]
-                    pick = st.selectbox(q, labels, key=key, label_visibility="collapsed")
-                    if pick != "Keep as is":
-                        answers[s.key] = dict(choices)[pick]
-                else:
-                    presets = ["Keep as is"] + [f"{c:g}" for c in choices] + ["Other..."]
-                    pick = st.selectbox(q, presets, key=key, label_visibility="collapsed")
-                    if pick == "Other...":
-                        answers[s.key] = st.number_input("Value", value=float(s.value), key=key + "_n", label_visibility="collapsed")
-                    elif pick != "Keep as is":
-                        answers[s.key] = float(pick)
-        if st.button("Apply my answers", type="primary", disabled=not answers, key="sq_apply"):
-            changes = []
-            state = state_from_session()
-            for k, v in answers.items():
-                changes += A.changes_for_answer(state, k, v)
-            descs, probs = apply_to_session(changes, "Answers to the most important questions")
-            if probs:
-                st.error("; ".join(probs))
-            else:
-                st.session_state["copilot_flash"] = "Applied: " + "; ".join(descs)
-                st.rerun()
     flash = st.session_state.pop("copilot_flash", None)
     if flash:
         st.success(flash)
+    if not owner and not engineer:
+        st.success("\U0001f3af All the important details are confirmed.")
+        return
+    ver = st.session_state.get("dmto_counts_ver", 0)
+    answers = {}
+    if owner:
+        from ui.guide import section
+        section(f"\U0001f3af {len(owner)} quick questions about your house",
+                "We used common Pakistani standards. Pick what fits your house - or leave 'Not sure'. "
+                "\u2605\u2605\u2605 = changes the materials a lot.")
+        cols = st.columns(2)
+        for i, q in enumerate(owner):
+            with cols[i % 2].container(border=True):
+                st.markdown(f"<div style='font-size:17px;font-weight:700;color:inherit'>{q.icon} {q.title} "
+                            f"<span style='float:right;color:#F59E0B;font-size:15px' title='How much it changes the materials'>"
+                            f"{stars(q.level)}</span></div>"
+                            f"<div style='margin:4px 0 2px 0'>{q.question}</div>"
+                            f"<div style='opacity:.7;font-size:13px'>Our guess: <b>{q.current}</b> \u00b7 {q.effect}</div>",
+                            unsafe_allow_html=True)
+                labels = [KEEP] + [lbl for lbl, _v in q.options]
+                pick = st.radio(q.question, labels, key=f"oq_{q.key}_{ver}", label_visibility="collapsed")
+                if q.help:
+                    st.caption("\u2139\ufe0f " + q.help)
+                if pick != KEEP:
+                    answers[q.key] = dict(q.options)[pick]
+    if engineer:
+        with st.expander(f"\U0001f477 {len(engineer)} technical questions - for your engineer or contractor (optional)"):
+            st.caption("Leave these if you don't know - ask your engineer, or check the structural drawings.")
+            for s_ in engineer:
+                qtext, kind, choices = A.QUESTION_BANK.get(s_.key, (f"{s_.label} ({s_.unit})?", "number", []))
+                c1, c2 = st.columns([3, 2])
+                c1.markdown(f"**{qtext}**  \n<span style='opacity:.7;font-size:0.85em'>Now: {s_.value:g} {s_.unit} "
+                            f"({_friendly_source(s_.source)}) \u00b7 {_friendly_drivers(s_.drivers)}</span>", unsafe_allow_html=True)
+                key = f"eq_{s_.key}_{ver}"
+                presets = ["Keep as is"] + [f"{c:g}" for c in choices] + ["Other..."]
+                pick = c2.selectbox(qtext, presets, key=key, label_visibility="collapsed")
+                if pick == "Other...":
+                    answers[s_.key] = c2.number_input("Value", value=float(s_.value), key=key + "_n", label_visibility="collapsed")
+                elif pick != "Keep as is":
+                    answers[s_.key] = float(pick)
+    if st.button(f"\u2705 Save my answers ({len(answers)})" if answers else "\u2705 Save my answers", type="primary",
+                 disabled=not answers, key="sq_apply"):
+        changes = []
+        state = state_from_session()
+        for k, v in answers.items():
+            changes += A.changes_for_answer(state, k, v)
+        descs, probs = apply_to_session(changes, "Answers to the quick questions")
+        if probs and not descs:
+            st.error("; ".join(probs))
+        else:
+            st.session_state["copilot_flash"] = "\u2705 Saved: " + "; ".join(descs)
+            st.rerun()
 
 
 # ---------------------------------------------------------------------------

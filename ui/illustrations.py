@@ -10,10 +10,12 @@ from typing import List, Optional, Tuple
 NAVY, TEAL, GOLD, SKY, SAND, GREY = "#0B1E3D", "#0D9488", "#FBBF24", "#DCEBFA", "#F5E6C8", "#94A3B8"
 
 
-def _svg(w: int, h: int, body: str, max_w: Optional[int] = None) -> str:
+def _svg(w: int, h: int, body: str, max_w: Optional[int] = None, panel: bool = True) -> str:
+    """Every illustration sits on its own light rounded panel, so it stays readable in light AND dark themes."""
     mw = f"max-width:{max_w or w}px;" if max_w is not False else ""
+    bg = f'<rect x="0" y="0" width="{w}" height="{h}" rx="12" fill="#F8FAFC"/>' if panel else ""
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" width="100%" style="{mw}display:block;'
-            f'margin:auto;font-family:Arial,sans-serif">{body}</svg>')
+            f'margin:auto;font-family:Arial,sans-serif">{bg}{body}</svg>')
 
 
 # ---------------------------------------------------------------------------
