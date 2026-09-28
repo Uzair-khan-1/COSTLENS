@@ -9,7 +9,8 @@ STEP_TITLES = {
     2: ("Your house design", "گھر کا نقشہ"),
     3: ("Check the details", "تفصیلات چیک کریں"),
     4: ("Materials & Bill of Quantities", "سامان کی فہرست اور BOQ"),
-    5: ("Download & share", "ڈاؤن لوڈ اور شیئر کریں"),
+    5: ("Construction schedule & Gantt chart", "تعمیراتی شیڈول اور گینٹ چارٹ"),
+    6: ("Download & share", "ڈاؤن لوڈ اور شیئر کریں"),
 }
 STEP_TITLE_SKETCH_2 = ("Your requirements", "آپ کی ضروریات")
 
@@ -29,7 +30,11 @@ TIPS = {
          "'Things to double-check' tells you what may be wrong before you order.",
          "Ask the assistant anything, e.g. 'what if I use block walls?'"],
         "یہ آپ کی خریداری کی فہرست ہے - بوریاں، ٹن اور اینٹیں"),
-    5: (["Excel for your contractor, PDF or WhatsApp for your suppliers.",
+    5: (["Pick the start date and working days - the programme is worked out from your quantities.",
+         "Red bars are the critical path: any delay there delays the whole house.",
+         "Download the schedule and Gantt chart in Excel for your contractor."],
+        "کام کب شروع اور کب ختم ہوگا - ٹھیکیدار کے ساتھ شیڈول طے کریں"),
+    6: (["Excel for your contractor, PDF or WhatsApp for your suppliers.",
          "Save the project file to continue later."],
         "ٹھیکیدار کے لیے ایکسل، دکاندار کے لیے PDF یا واٹس ایپ"),
 }
@@ -74,4 +79,5 @@ GLOSSARY = [
     ("Load-bearing", "The brick walls carry the roof (common for 5-10 marla). 'RCC frame' = concrete columns and beams carry it."),
 ]
 
-STEP_LABELS_PLAIN = ["1. Your plot", "2. Your house design", "3. Check details", "4. Materials & BOQ", "5. Download"]
+STEP_LABELS_PLAIN = ["1. Your plot", "2. Your house design", "3. Check details", "4. Materials & BOQ", "5. Schedule & Gantt",
+               "6. Download"]

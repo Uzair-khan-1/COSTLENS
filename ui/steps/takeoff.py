@@ -37,6 +37,6 @@ def step_4():
             go_to_step(3)
             st.rerun()
     with c2:
-        if st.button("Next: download & share \u2192", type="primary", width="stretch"):
+        if st.button("Next: schedule & Gantt chart \u2192", type="primary", width="stretch"):
             go_to_step(5)
             st.rerun()

@@ -8,7 +8,8 @@ The wizard:
      Your requirements (sketch / description + AI follow-up + guided questions)
   3. Review data - most important questions, rooms, doors & windows, counts, structure
   4. Material take-off - take-off check, copilot, shopping list, schedule, traceability
-  5. Export - Excel workbook, CSV, WhatsApp text and PDF shopping list
+  5. Schedule - construction programme (CPM) and Gantt chart from the take-off quantities
+  6. Export - Excel workbook, CSV, WhatsApp text and PDF shopping list
 
 Code map:
   ui/steps/*          one module per step          ui/sidebar.py      navigation + project save/open
@@ -71,6 +72,9 @@ elif step == 4:
     from ui.steps.takeoff import step_4
     step_4()
 elif step == 5:
+    from ui.steps.schedule import step_schedule  # construction schedule & Gantt chart (scheduling/)
+    step_schedule()
+elif step == 6:
     from ui.steps.export import step_5
     step_5()
 else:

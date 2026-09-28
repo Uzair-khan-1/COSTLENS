@@ -15,7 +15,7 @@ from ui.state import go_to_step, reset_project
 # ---------------------------------------------------------------------------
 def step_5():
     from ui.guide import section, step_header
-    step_header(5)
+    step_header(6)
     pi: ProjectInputs = st.session_state["project_inputs"]
     res = mto_views.ensure_current_result(pi, st.session_state.get("extracted_params"))
     if res is None:
