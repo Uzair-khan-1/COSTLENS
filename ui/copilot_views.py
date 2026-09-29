@@ -27,20 +27,36 @@ SEV_ICON = {"problem": "\U0001f534", "check": "\U0001f7e0", "info": "\u2139\ufe0
 # session <-> state
 # ---------------------------------------------------------------------------
 def state_from_session() -> ProjectState:
+    """The project as the estimate sees it: drawings + the owner's scope/specification answers + manual edits."""
     from ui import mto_views
+    settings = mto_views.scope_settings()
     return ProjectState(
         pi=st.session_state["project_inputs"], params=st.session_state["extracted_params"],
-        rooms=st.session_state.get("dmto_rooms"), openings=st.session_state.get("dmto_openings"),
-        overrides=dict(st.session_state.get("dmto_overrides") or {}), options=st.session_state["dmto_options"],
+        rooms=st.session_state.get("dmto_rooms"),
+        openings=mto_views.apply_window_size(st.session_state.get("dmto_openings"), settings),
+        overrides=mto_views.effective_overrides(None, settings), options=mto_views.effective_options(settings),
         floors=st.session_state.get("dmto_floors"), facts=st.session_state.get("package_facts"),
         scan=st.session_state.get("dmto_scan"), mode=mto_views.drawing_mode())
 
 
 def _write_state(s: ProjectState) -> None:
+    """Store only what the owner changed on top of the scope answers (so later scope changes still apply)."""
+    from dataclasses import fields, replace
+    from ui import mto_views
+    settings = mto_views.scope_settings()
     st.session_state["dmto_rooms"] = s.rooms
     st.session_state["dmto_openings"] = s.openings
-    st.session_state["dmto_overrides"] = dict(s.overrides)
-    st.session_state["dmto_options"] = s.options
+    st.session_state["dmto_overrides"] = {k: v for k, v in s.overrides.items() if settings.overrides.get(k) != v}
+    base = st.session_state["dmto_options"]
+    changed = {f.name: getattr(s.options, f.name) for f in fields(base)
+               if f.name not in settings.options and getattr(s.options, f.name) != getattr(base, f.name)}
+    # options the scope controls (e.g. masonry, roof) are changed through the scope answers
+    for f_name, qid in (("masonry", "walls"), ("roof_system", "roof"), ("gas_source", "gas_src"), ("floor_finish", "floor_type")):
+        if f_name in settings.options and getattr(s.options, f_name) != settings.options[f_name]:
+            answers = dict(st.session_state.get("spec_answers") or {})
+            answers[qid] = getattr(s.options, f_name)
+            st.session_state["spec_answers"] = answers
+    st.session_state["dmto_options"] = replace(base, **changed)
     st.session_state["dmto_ver"] = st.session_state.get("dmto_ver", 0) + 1  # refresh review tables
     st.session_state["dmto_counts_ver"] = st.session_state.get("dmto_counts_ver", 0) + 1
 

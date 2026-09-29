@@ -44,13 +44,68 @@ def drawing_mode() -> str:
     return "scanned" if st.session_state.get("uploaded_files") else "none"
 
 
+def scope_settings():
+    """The owner's scope of work + specification answers as engine settings (detailed_mto/scope.py)."""
+    from detailed_mto.scope import compile_scope
+    return compile_scope(set(st.session_state.get("scope_sel") or ()), dict(st.session_state.get("spec_answers") or {}))
+
+
+def effective_options(settings=None):
+    from dataclasses import replace
+    settings = settings or scope_settings()
+    base = st.session_state["dmto_options"]
+    return replace(base, **{k: v for k, v in settings.options.items() if hasattr(base, k)})
+
+
+def effective_overrides(manual=None, settings=None):
+    """Spec answers first, then the owner's manual edits (which win)."""
+    settings = settings or scope_settings()
+    manual = st.session_state.get("dmto_overrides") or {} if manual is None else manual
+    plot = st.session_state.get("plot_dims_user")
+    plot_over = {"PLOT_W": float(plot[0]), "PLOT_D": float(plot[1])} if plot and plot[0] and plot[1] else {}
+    return {**plot_over, **settings.overrides, **manual}
+
+
+def apply_window_size(opening_rows, settings=None):
+    """The answer to 'how big are the windows?' replaces window sizes that did not come from the drawings."""
+    settings = settings or scope_settings()
+    if opening_rows is None or not settings.window_size:
+        return opening_rows
+    w, h = settings.window_size
+    out = []
+    for r in opening_rows:
+        r = dict(r)
+        if r.get("Kind") == "window" and r.get("Confidence") not in ("High", "User") and "mumty" not in str(r.get("Name", "")).lower():
+            r["Width (ft)"], r["Height (ft)"], r["Source"], r["Confidence"] = w, h, "Your answer (window size)", "User"
+        out.append(r)
+    return out
+
+
 def _build(pi, params, room_rows=None, opening_rows=None, overrides=None):
+    settings = scope_settings()
     return build_project(pi, params, kb(), facts=st.session_state.get("package_facts"), scan=st.session_state.get("dmto_scan"),
-                         options=st.session_state["dmto_options"],
+                         options=effective_options(settings),
                          rooms_override=rows_to_rooms(room_rows) if room_rows is not None else None,
-                         openings_override=rows_to_openings(opening_rows) if opening_rows is not None else None,
-                         overrides=overrides, drawing_mode=drawing_mode(),
+                         openings_override=rows_to_openings(apply_window_size(opening_rows, settings)) if opening_rows is not None else None,
+                         overrides=effective_overrides(overrides or {}, settings),
+                         drawing_mode=drawing_mode(),
                          floors_override=st.session_state.get("dmto_floors") if drawing_mode() == "sketch" else None)
+
+
+def readiness_now(pi, params):
+    """Found / missing / assumptions for the current inputs (detailed_mto/readiness.py)."""
+    from detailed_mto.readiness import evaluate
+    p = current_project(pi, params)
+    return evaluate(p, set(st.session_state.get("scope_sel") or ()), dict(st.session_state.get("spec_answers") or {}),
+                    bool(st.session_state.get("scope_confirmed")))
+
+
+def estimate_allowed(pi, params) -> tuple:
+    """(allowed, readiness) - an estimate is produced only when nothing required is missing and the owner has
+    acknowledged the remaining assumptions."""
+    r = readiness_now(pi, params)
+    ack = st.session_state.get("assumptions_ack") == r.assumptions_hash()
+    return (r.ready and ack), r
 
 
 def seed_review_rows(pi, params) -> None:
@@ -82,7 +137,8 @@ def input_signature(pi, params) -> str:
                  json.dumps(st.session_state.get("dmto_overrides") or {}, sort_keys=True, default=str),
                  repr(st.session_state.get("dmto_options")), repr(st.session_state.get("uploaded_signature")),
                  repr(st.session_state.get("dmto_floors")),
-                 drawing_mode()):
+                 repr(sorted(st.session_state.get("scope_sel") or ())), repr(sorted((st.session_state.get("spec_answers") or {}).items())),
+                 repr(st.session_state.get("scope_confirmed")), drawing_mode()):
         h.update(part.encode())
     return h.hexdigest()
 
@@ -102,6 +158,11 @@ def ensure_current_result(pi, params) -> Optional[DetailedResult]:
     res = st.session_state.get("dmto_result")
     if params is None:
         return res
+    allowed, rd = estimate_allowed(pi, params)
+    if not allowed:
+        st.warning("\u270b The estimate is on hold until the missing details are answered and the assumptions are "
+                   "confirmed in Step 3: " + ("; ".join(m.title for m in rd.missing[:6]) if rd.missing else "please confirm the assumptions."))
+        return None
     if res is None or st.session_state.get("dmto_result_sig") != input_signature(pi, params):
         stale = res is not None
         issues = validate_project(current_project(pi, params))

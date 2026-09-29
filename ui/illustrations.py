@@ -62,8 +62,8 @@ def card_idea() -> str:
 # how it works strip
 # ---------------------------------------------------------------------------
 def how_it_works() -> str:
-    steps = [("Your plot", "size & city", "plot"), ("Your design", "drawings or sketch", "doc"),
-             ("Check", "a few questions", "check"), ("Materials & BOQ", "what to buy", "list"), ("Download", "Excel, PDF, WhatsApp", "down")]
+    steps = [("Your project", "drawings & city", "plot"), ("Your design", "we read it", "doc"),
+             ("Your scope", "what you want", "check"), ("Materials & BOQ", "what to buy", "list"), ("Download", "Excel, PDF, WhatsApp", "down")]
     icons = {
         "plot": '<rect x="-16" y="-12" width="32" height="24" fill="#E6F4E1" stroke="{c}" stroke-width="2"/><rect x="-9" y="-6" width="14" height="12" fill="{c}"/>',
         "doc": '<rect x="-12" y="-15" width="24" height="30" rx="2" fill="white" stroke="{c}" stroke-width="2"/><path d="M-7 -6 H7 M-7 0 H7 M-7 6 H3" stroke="{c}" stroke-width="2"/>',

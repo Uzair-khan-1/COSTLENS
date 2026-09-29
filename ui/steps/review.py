@@ -180,8 +180,8 @@ def _house_summary(pi, params) -> None:
 
 
 def step_3():
-    from ui import copilot_views
     from ui.guide import section, step_header
+    from ui import scope_views
     step_header(3)
     pi: ProjectInputs = st.session_state["project_inputs"]
     params = st.session_state["extracted_params"]
@@ -192,18 +192,21 @@ def step_3():
     mto_views.render_drawing_mode_banner()
     mto_views.seed_review_rows(pi, params)
     section("\U0001f3e1 Your house", "Read from your " + ("answers" if st.session_state.get("input_mode") == "sketch"
-                                                          else "drawings") + " - fix anything below that looks wrong.")
+                                                          else "drawings") + ".")
     _house_summary(pi, params)
-    if (st.session_state.get("used_ai") or st.session_state.get("drawing_filled") or pi.plot_marla) and params.extraction_warnings:
+    checklist = st.container()  # filled at the end, after the answers on this page are known
+
+    scope_views.render_scope_picker()
+    scope_views.render_detail_questions(mto_views.current_project(pi, params))
+
+    section("3\ufe0f\u20e3 Check rooms, doors & windows", "Values marked \u26aa are standard sizes; \U0001f7e2 come from your drawings; "
+            "\U0001f535 are yours. Fix anything that looks wrong.")
+    if (st.session_state.get("used_ai") or st.session_state.get("drawing_filled")) and params.extraction_warnings:
         with st.expander("\u26a0\ufe0f Notes from reading the drawings", expanded=False):
             for w in params.extraction_warnings:
                 st.warning(w)
     if params.overall_notes and st.session_state.get("used_ai") and st.session_state.get("input_mode") != "sketch":
         st.info(f"**AI notes:** {params.overall_notes}")
-
-    copilot_views.render_smart_questions()
-
-    section("\U0001f4cb Rooms, doors & windows", "Values marked \u26aa are standard sizes we assumed; \U0001f7e2 come from your drawings.")
     t_rooms, t_open = st.tabs(["\U0001f3e0 Rooms", "\U0001f6aa Doors & windows"], key="dmto_step3_tabs")
     with t_rooms:
         room_rows = mto_views.render_rooms_editor()
@@ -213,7 +216,7 @@ def step_3():
         opening_rows = mto_views.render_openings_editor()
 
     with st.expander("\u2699\ufe0f For engineers: all counts & dimensions, structure, coefficients"):
-        st.caption(mto_views.options_summary(st.session_state["dmto_options"]) + " (change in Step 1 \u2192 Advanced settings)")
+        st.caption(mto_views.options_summary(mto_views.effective_options()))
         t_counts, t_struct, t_coef = st.tabs(["All counts & dimensions", "Structure", "Coefficients"], key="dmto_step3_adv_tabs")
         with t_struct:
             if units.is_fps(unit_system):
@@ -236,6 +239,12 @@ def step_3():
             for w in warnings:
                 st.warning(w)
 
+    rd = mto_views.readiness_now(pi, params)
+    scope_views.render_assumptions(rd)
+    with checklist:
+        scope_views.render_checklist(rd)
+    ack_ok = st.session_state.get("assumptions_ack") == rd.assumptions_hash()
+
     c1, c2, c3 = st.columns([1, 1, 2])
     with c1:
         if st.button("\u2190 Back"):
@@ -246,12 +255,20 @@ def step_3():
         if st.button("\U0001f4be Save table changes", help="Saves the Rooms / Doors & windows tables and refreshes everything that depends on them."):
             mto_views.save_review(room_rows, opening_rows)
             st.rerun()
+    blocked = bool(errors) or not rd.ready or not ack_ok
     with c3:
-        if st.button("Calculate materials \u2192", type="primary", width="stretch", disabled=bool(errors)):
+        if st.button("Calculate materials \u2192", type="primary", width="stretch", disabled=blocked):
             mto_views.save_review(room_rows, opening_rows)
             with st.spinner("Calculating every material for your house..."):
                 mto_views.run_takeoff(pi, params)
             go_to_step(4)
             st.rerun()
-    if errors:
-        st.caption("Fix the items marked in red above to continue.")
+    if blocked:
+        why = []
+        if rd.missing:
+            why.append(f"answer the {len(rd.missing)} missing item(s) listed at the top")
+        if errors:
+            why.append("fix the items marked in red")
+        if not ack_ok and rd.ready:
+            why.append("confirm the assumptions (tick the box above)")
+        st.caption("To calculate: " + "; ".join(why) + ".")

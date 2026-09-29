@@ -155,6 +155,11 @@ def project_to_dict(ss: Dict[str, Any], include_drawings: bool = False) -> dict:
         "brief": _dc(ss.get("brief")) if ss.get("brief") is not None else None,
         "copilot_scenarios": scen,
         "copilot_msgs": [{"role": m["role"], "content": m["content"]} for m in ss.get("copilot_msgs") or []][-30:],
+        # the owner's scope of work & answers
+        "scope_sel": sorted(ss.get("scope_sel") or []), "scope_confirmed": bool(ss.get("scope_confirmed")),
+        "spec_answers": {k: (list(v) if isinstance(v, tuple) else v) for k, v in (ss.get("spec_answers") or {}).items()},
+        "assumptions_ack": ss.get("assumptions_ack") or "",
+        "plot_dims_user": list(ss.get("plot_dims_user")) if ss.get("plot_dims_user") else None,
         "drawings": None,
     }
     if include_drawings and ss.get("uploaded_files"):
@@ -202,6 +207,10 @@ def project_from_json(raw: bytes) -> Dict[str, Any]:
         "uploaded_files": files, "drawing_filled": d.get("drawing_filled") or [],
         "brief": _brief_from(d.get("brief")),
         "copilot_scenarios": scen, "copilot_msgs": d.get("copilot_msgs") or [],
+        "scope_sel": list(d.get("scope_sel") or []), "scope_confirmed": bool(d.get("scope_confirmed")),
+        "spec_answers": {k: (tuple(v) if isinstance(v, list) else v) for k, v in (d.get("spec_answers") or {}).items()},
+        "assumptions_ack": d.get("assumptions_ack") or "",
+        "plot_dims_user": tuple(d["plot_dims_user"]) if d.get("plot_dims_user") else None,
         "step": min(int(d.get("step", 1)), 4 if has_params else 1), "max_step": int(d.get("max_step", 1)) if has_params else 1,
         "dmto_result": None,
     }

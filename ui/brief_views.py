@@ -17,7 +17,6 @@ import streamlit as st
 
 from detailed_mto.brief import (FLOORS, ROOM_TYPES, BriefRoom, ProjectBrief, add_attached_baths, apply_ai_result,
                                 brief_summary, brief_to_inputs, complete_programme, parse_description, typical_rooms)
-from detailed_mto.model import Options
 from ui.illustrations import tip_box_html
 from models.schemas import ConfidenceLevel, Estimate, Source
 
@@ -27,9 +26,9 @@ ROOM_COLS = ["Floor", "Room", "Room type", "Length (ft)", "Width (ft)", "Source"
 def _brief(pi) -> ProjectBrief:
     b = st.session_state.get("brief")
     if b is None:
-        b = ProjectBrief(marla=float(pi.plot_marla or 5), marla_sqft=float(pi.marla_sqft or 272.25),
-                         plot_width_ft=pi.plot_width_ft, storeys=int(pi.plot_storeys or 2))
-        b.rooms = typical_rooms(b)
+        b = ProjectBrief(marla=0.0, marla_sqft=float(pi.marla_sqft or 272.25), plot_width_ft=None, plot_depth_ft=None,
+                         storeys=0)
+        b.rooms = []  # nothing is assumed: the owner adds rooms (or explicitly starts from a typical layout)
         st.session_state["brief"] = b
         st.session_state["brief_ver"] = 0
     return b
@@ -164,40 +163,24 @@ def render_brief_step(pi, go_to_step, groq_key: str) -> None:
                     _bump()
                     st.rerun()
 
-    # ------------------------------------------------------------ 2. plot
+    # ------------------------------------------------------------ 2. plot & floors
     with st.container(border=True):
-        st.markdown("##### \U0001f4cf 2. Plot")
+        st.markdown("##### \U0001f4cf 2. Plot & floors  <span style='font-size:13px;opacity:.7'>(required)</span>", unsafe_allow_html=True)
         c1, c2, c3, c4 = st.columns(4)
-        b.marla = c1.number_input("Plot size (marla)", 2.0, 40.0, float(b.marla), 0.5, key=f"bq_marla_{v}")
-        std = [272.25, 225.0]
-        b.marla_sqft = c2.selectbox("Marla standard", std, index=std.index(b.marla_sqft) if b.marla_sqft in std else 0,
-                                    format_func=lambda x: "272.25 sft (CDA / traditional)" if x == 272.25 else "225 sft (societies)",
-                                    key=f"bq_std_{v}")
-        w0, _ = b.plot_dims()
-        b.plot_width_ft = c3.number_input("Plot width / frontage (ft)", 10.0, 200.0, float(round(w0, 1)), 0.5, key=f"bq_w_{v}")
-        d_default = b.plot_depth_ft or b.plot_area / b.plot_width_ft
-        b.plot_depth_ft = c4.number_input("Plot depth (ft)", 10.0, 400.0, float(round(d_default, 1)), 0.5, key=f"bq_d_{v}")
-        c5, c6, c7 = st.columns(3)
-        b.storeys = c5.selectbox("Number of storeys", [1, 2, 3], index=[1, 2, 3].index(b.storeys) if b.storeys in (1, 2, 3) else 1,
-                                 format_func=lambda n: {1: "Single storey", 2: "Double storey (G+1)", 3: "G+2"}[n],
-                                 key=f"bq_storeys_{v}")
-        b.mumty = c6.checkbox("Mumty (stair room on the roof)", value=b.mumty, key=f"bq_mumty_{v}")
-        sides = ["Both sides shared", "One side shared (corner)", "Independent (no shared walls)"]
-        b.side_walls = c7.selectbox("Neighbours' walls", sides, index=sides.index(b.side_walls) if b.side_walls in sides else 0,
-                                    help="Shared side walls are not plastered/painted outside.", key=f"bq_sides_{v}")
-
-    # ------------------------------------------------------------ 3. structure
-    with st.container(border=True):
-        st.markdown("##### \U0001f3d7\ufe0f 3. How will it be built?")
-        opts = ["Load-bearing brick", "RCC frame (columns & beams)"]
-        b.structure = st.radio("Structure", opts, index=opts.index(b.structure) if b.structure in opts else 0, horizontal=True,
-                               key=f"bq_struct_{v}",
-                               help="Most 5-10 marla houses in Pakistan are load-bearing: 9-inch brick walls carry the RCC slabs. "
-                                    "RCC frame = concrete columns and beams, needs more steel and concrete.")
-        c1, c2 = st.columns(2)
-        b.floor_height_ft = c1.number_input("Floor-to-floor height (ft)", 9.0, 16.0, float(b.floor_height_ft), 0.5,
-                                            key=f"bq_fh_{v}", help="Typical 11'-6\" to 12'-0\".")
-        b.plinth_ft = c2.number_input("Plinth height above road (ft)", 0.5, 5.0, float(b.plinth_ft), 0.5, key=f"bq_pl_{v}")
+        b.plot_width_ft = c1.number_input("Plot width at the road (ft)", min_value=10.0, max_value=300.0, value=b.plot_width_ft,
+                                          step=0.5, placeholder="e.g. 30", key=f"bq_w_{v}")
+        b.plot_depth_ft = c2.number_input("Plot depth (ft)", min_value=10.0, max_value=400.0, value=b.plot_depth_ft, step=0.5,
+                                          placeholder="e.g. 45", key=f"bq_d_{v}")
+        if b.plot_width_ft and b.plot_depth_ft:
+            b.marla = round(b.plot_width_ft * b.plot_depth_ft / b.marla_sqft, 2)
+            c3.markdown(f"<div style='padding-top:28px'>= {b.plot_width_ft * b.plot_depth_ft:,.0f} sq ft \u2248 "
+                        f"<b>{b.marla:.1f} marla</b></div>", unsafe_allow_html=True)
+        floors_lbl = {1: "Single storey", 2: "Double storey (G+1)", 3: "Triple storey (G+2)"}
+        pick = c4.segmented_control("Floors", [1, 2, 3], default=b.storeys if b.storeys in (1, 2, 3) else None,
+                                    format_func=lambda n: floors_lbl[n], key=f"bq_storeys_{v}")
+        b.storeys = int(pick) if pick else 0
+        b.mumty = st.checkbox("Mumty (stair room on the roof)", value=b.mumty, key=f"bq_mumty_{v}")
+        st.caption("Wall material, roof, neighbours and room height are asked in the next step with everything else.")
 
     # ------------------------------------------------------------ 4. rooms
     with st.container(border=True):
@@ -214,8 +197,10 @@ def render_brief_step(pi, go_to_step, groq_key: str) -> None:
             }, disabled=["Source"])
         rooms_now = _rows_to_brief_rooms(edited.to_dict("records"), b.rooms)
         r1, r2, r3 = st.columns(3)
-        if r1.button("Fill a typical layout for my plot", width="stretch",
-                     help="Replaces the list with a typical room programme for this plot size and number of storeys."):
+        if r1.button("Start from a typical layout (then edit)", width="stretch",
+                     disabled=not (b.plot_width_ft and b.plot_depth_ft and b.storeys),
+                     help="Fills a typical room list for your plot and floors. Room sizes are marked 'typical' and listed as "
+                          "assumptions until you change them."):
             b.rooms = typical_rooms(b)
             _bump()
             st.rerun()
@@ -235,42 +220,6 @@ def render_brief_step(pi, go_to_step, groq_key: str) -> None:
         if orphan:
             st.warning(f"{len(orphan)} room(s) are on a floor above the number of storeys and will be ignored.")
 
-    # ------------------------------------------------------------ 5. services
-    o: Options = st.session_state["dmto_options"]
-    with st.container(border=True):
-        st.markdown("##### \U0001f6bf 5. Services")
-        c1, c2 = st.columns(2)
-        with c1:
-            b.ac_rooms = st.multiselect("Air-conditioners in", ["Bedrooms", "Lounges", "Drawing room"], default=b.ac_rooms,
-                                        key=f"bq_ac_{v}")
-            heats = ["Gas geyser", "Electric geyser", "Solar water heater"]
-            b.water_heating = st.radio("Hot water", heats, index=heats.index(b.water_heating), horizontal=True, key=f"bq_hw_{v}")
-            gases = ["SNGPL", "LPG", "None"]
-            gas = st.radio("Cooking gas", gases, index=gases.index(o.gas_source), horizontal=True, key=f"bq_gas_{v}",
-                           help="New SNGPL connections are restricted in many areas - choose LPG if cylinders will be used.")
-        with c2:
-            b.ug_tank_gal = st.number_input("Underground water tank (gallons)", 0.0, 10000.0, float(b.ug_tank_gal), 100.0, key=f"bq_ug_{v}")
-            b.oh_tank_gal = st.number_input("Overhead (roof) tank (gallons)", 0.0, 3000.0, float(b.oh_tank_gal), 50.0, key=f"bq_oh_{v}")
-            sewers = ["Municipal sewer", "Septic tank"]
-            b.sewer = st.radio("Sewage", sewers, index=sewers.index(b.sewer), horizontal=True, key=f"bq_sew_{v}")
-
-    # ------------------------------------------------------------ 6. finishes & outside
-    with st.container(border=True):
-        st.markdown("##### \u2728 6. Finishes & outside")
-        c1, c2, c3 = st.columns(3)
-        tiers = ["Economy", "Standard", "Premium"]
-        tier = c1.radio("Finish level", tiers, index=tiers.index(o.finish_tier), key=f"bq_tier_{v}",
-                        help="Economy: basic tiles & fittings, no false ceilings. Premium: better fittings, extra items.")
-        fc = c1.checkbox("False ceilings in main rooms", value=o.include_false_ceiling, key=f"bq_fc_{v}")
-        roofs = ["Traditional", "Insulated"]
-        roof = c2.radio("Roof treatment", roofs, index=roofs.index(o.roof_system), key=f"bq_roof_{v}",
-                        help="Traditional: bitumen + polythene + mud + brick tiles. Insulated: foam boards + waterproof membrane (cooler house).")
-        masonry = c2.radio("Walls made of", ["Brick", "Block"], index=["Brick", "Block"].index(o.masonry), key=f"bq_mas_{v}")
-        bounds = ["Front wall + gate only", "Front, back & sides", "None"]
-        b.boundary = c3.radio("Boundary wall", bounds, index=bounds.index(b.boundary), key=f"bq_bw_{v}")
-        b.gate_width_ft = c3.number_input("Main gate width (ft)", 0.0, 30.0, float(b.gate_width_ft), 0.5, key=f"bq_gate_{v}")
-        rwh = c3.checkbox("Rainwater recharge well (CDA)", value=o.include_rwh, key=f"bq_rwh_{v}")
-
     # ------------------------------------------------------------ summary & go
     with st.container(border=True):
         st.markdown("##### \u2705 Your project")
@@ -280,7 +229,14 @@ def render_brief_step(pi, go_to_step, groq_key: str) -> None:
         preview.rooms = rooms_now
         for k, txt in brief_summary(preview):
             st.markdown(f"**{k}:** {txt}")
-        can_go = len(rooms_now) > 0
+        need = []
+        if not (b.plot_width_ft and b.plot_depth_ft):
+            need.append("plot width and depth")
+        if b.storeys not in (1, 2, 3):
+            need.append("number of floors")
+        if not rooms_now:
+            need.append("at least one room with its size")
+        can_go = not need
         c1, c2 = st.columns([1, 2])
         with c1:
             if st.button("\u2190 Back to Step 1"):
@@ -288,16 +244,12 @@ def render_brief_step(pi, go_to_step, groq_key: str) -> None:
                 st.rerun()
         with c2:
             if st.button("Create my project & review \u2192", type="primary", width="stretch", disabled=not can_go):
-                st.session_state["dmto_options"] = Options(
-                    scope=o.scope, finish_tier=tier, roof_system=roof, masonry=masonry, gas_source=gas,
-                    include_false_ceiling=fc, include_rwh=rwh, include_options=o.include_options,
-                    seismic_bands=o.seismic_bands, rcc_mix=o.rcc_mix)
                 b.rooms = rooms_now
                 apply_brief_to_session(pi, b)
                 go_to_step(3)
                 st.rerun()
         if not can_go:
-            st.caption("Add at least one room to continue.")
+            st.caption("Still needed: " + ", ".join(need) + ".")
 
 
 def apply_brief_to_session(pi, b: ProjectBrief) -> None:

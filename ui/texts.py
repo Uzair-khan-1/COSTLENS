@@ -5,9 +5,9 @@ and the common Pakistani residential defaults used when the user does not choose
 from __future__ import annotations
 
 STEP_TITLES = {
-    1: ("Tell us about your plot", "اپنے پلاٹ کے بارے میں بتائیں"),
+    1: ("Start your project", "اپنا پروجیکٹ شروع کریں"),
     2: ("Your house design", "گھر کا نقشہ"),
-    3: ("Check the details", "تفصیلات چیک کریں"),
+    3: ("Your scope & details", "کام کی تفصیل اور ضروری معلومات"),
     4: ("Materials & Bill of Quantities", "سامان کی فہرست اور BOQ"),
     5: ("Construction schedule & Gantt chart", "تعمیراتی شیڈول اور گینٹ چارٹ"),
     6: ("Download & share", "ڈاؤن لوڈ اور شیئر کریں"),
@@ -16,16 +16,16 @@ STEP_TITLE_SKETCH_2 = ("Your requirements", "آپ کی ضروریات")
 
 TIPS = {
     1: (["Choose what you have: architect's drawings, a hand sketch, or just an idea.",
-         "Pick your city and plot size - everything else starts from common Pakistani house standards.",
-         "Engineers can change the technical settings under 'Advanced settings'."],
-        "جو آپ کے پاس ہے وہ منتخب کریں، پھر شہر اور پلاٹ کا سائز"),
+         "Pick your city. The plot size is read from your drawings - you don't have to enter it.",
+         "Nothing is guessed: whatever is not on your drawings is asked in simple questions later."],
+        "جو آپ کے پاس ہے وہ منتخب کریں اور شہر چنیں - پلاٹ کا سائز نقشے سے لیا جائے گا"),
     2: (["We read the drawings for you - room sizes, walls, doors, bathrooms, tanks.",
          "If it looks right, press the green button. The AI is optional."],
         "ہم آپ کے نقشے سے کمرے، دیواریں اور دروازے خود پڑھتے ہیں"),
-    3: (["Answer the few questions at the top - they change the quantities the most.",
-         "Check the list of rooms and the door & window sizes. Fix anything that looks wrong.",
-         "Then press 'Calculate materials'."],
-        "اوپر کے سوالات کے جواب دیں اور کمروں کی فہرست چیک کریں"),
+    3: (["Tick what you want in the house (tiles, paint, doors, kitchen, ACs ...). Only ticked items are estimated.",
+         "Answer the short questions for what you ticked - answers found on your drawings are already filled in.",
+         "Read the few standard assumptions at the bottom, tick to confirm, then press 'Calculate materials'."],
+        "جو کام چاہیے اس پر نشان لگائیں، سوالات کے جواب دیں، پھر حساب کریں"),
     4: (["'What to buy' is your shopping list, in bags, tons and bricks.",
          "'Things to double-check' tells you what may be wrong before you order.",
          "Ask the assistant anything, e.g. 'what if I use block walls?'"],
@@ -79,5 +79,5 @@ GLOSSARY = [
     ("Load-bearing", "The brick walls carry the roof (common for 5-10 marla). 'RCC frame' = concrete columns and beams carry it."),
 ]
 
-STEP_LABELS_PLAIN = ["1. Your plot", "2. Your house design", "3. Check details", "4. Materials & BOQ", "5. Schedule & Gantt",
+STEP_LABELS_PLAIN = ["1. Your project", "2. Your house design", "3. Scope & details", "4. Materials & BOQ", "5. Schedule & Gantt",
                "6. Download"]

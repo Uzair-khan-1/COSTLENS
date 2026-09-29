@@ -1,6 +1,6 @@
 """Constants shared by the wizard steps."""
 
-STEP_LABELS = ["1. Your plot", "2. Your house design", "3. Check details", "4. Materials & BOQ", "5. Schedule & Gantt",
+STEP_LABELS = ["1. Your project", "2. Your house design", "3. Scope & details", "4. Materials & BOQ", "5. Schedule & Gantt",
                "6. Download"]
 TIERS = ["Economy", "Standard", "Premium"]
 TIER_TO_FINISH = {"Economy": "Basic", "Standard": "Standard", "Premium": "Premium"}

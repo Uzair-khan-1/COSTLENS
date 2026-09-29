@@ -1,4 +1,4 @@
-# CostLens — *From plans to materials.* (v0.9.1)
+# CostLens — *From plans to materials.* (v0.10.0)
 
 A drawing-based **Material Take-Off (MTO)** tool for 5-10 marla houses in
 Pakistan. Upload the complete drawing set (CAD-exported PDFs work best); the
@@ -571,6 +571,27 @@ lines). See **[DETAILED_MTO.md](DETAILED_MTO.md)**.
 ---
 
 ## 8. Changelog
+
+**v0.10.0 — a real estimating assistant: no silent assumptions**
+- **Plot size is read from the drawings** (site plan / area statement) - no more 5/7/10 marla buttons. If it is not
+  on the drawings, the owner enters width and depth (required).
+- **No estimate without enough information.** No drawings or unreadable drawings -> the guided questions, never a
+  "typical house". The sketch route starts empty: plot size, floors and rooms are required (a typical layout only
+  if the owner asks for it, and its sizes are then listed as assumptions).
+- **Scope of work (Step 3):** the owner ticks what they want (tiles, wall tiles, paint, ceilings, doors, windows,
+  grills, railings, bathroom fittings, geysers, kitchen, appliances, wardrobes, wiring, lights & fans, AC provisions,
+  exhaust fans, TV/internet, earthing, solar, tanks & pumps, gas, boundary wall, paving, cladding, recharge well,
+  fire safety) with presets. Unticked items are removed from quantities, BOQ, shopping list, Excel and schedule.
+- **Only the missing details are asked** - plain questions per ticked item (floor finish, bath tile height, door
+  type, window frames & size, WC type, geysers, kitchen counters & countertop, wardrobes, lights, sockets, fans, ACs
+  & units, TV points, tanks, gas, boundary, paving, cladding) plus core questions (structure, room height, walls,
+  roof, sewage, neighbours). Answers found in the drawings are pre-filled and marked.
+- **Checklist + gate:** "Found in your drawings" / "Still needed from you" at the top; the Calculate button, and
+  Steps 4-6 (including the Schedule), stay locked until nothing required is missing and the owner has read and
+  confirmed the remaining standard assumptions (engineering values, steel ratios, wastage, typical room sizes,
+  items left out for lack of information).
+- New modules: `detailed_mto/scope.py`, `detailed_mto/readiness.py`, `ui/scope_views.py`; scope & answers are saved
+  in project files; the copilot works on the owner's scope.
 
 **v0.9.1 — readable in dark mode, owner-friendly quick questions**
 - Headings, card titles and descriptions now follow the theme text colour, and every illustration sits on

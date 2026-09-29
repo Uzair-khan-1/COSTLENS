@@ -56,6 +56,12 @@ def init_session_state():
         "input_mode": "drawings",  # "drawings" (architect's CAD/scans) | "sketch" (sketch / description + questions)
         "brief": None,  # detailed_mto.brief.ProjectBrief
         "sketch_files": [],
+        # --- the owner's scope of work & specifications (detailed_mto/scope.py) ---
+        "scope_sel": [],  # scope item keys the owner ticked
+        "scope_confirmed": False,
+        "spec_answers": {},  # question id -> value
+        "assumptions_ack": "",  # hash of the assumptions the owner acknowledged
+        "plot_dims_user": None,  # (width, depth) ft when not on the drawings
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -91,6 +97,7 @@ def reset_project():
         *DMTO_DERIVED_KEYS,
         *BRIEF_KEYS,
         *COPILOT_KEYS,
+        *SCOPE_KEYS,
     ]
     for k in keys_to_clear:
         if k in st.session_state:
@@ -104,6 +111,7 @@ def reset_project():
 
 
 DMTO_DERIVED_KEYS = ["dmto_scan", "dmto_rooms", "dmto_openings", "dmto_overrides", "dmto_result", "dmto_xlsx", "dmto_floors"]
+SCOPE_KEYS = ["scope_sel", "scope_confirmed", "spec_answers", "assumptions_ack", "plot_dims_user"]
 COPILOT_KEYS = ["copilot_msgs", "copilot_props", "copilot_undo", "copilot_scenarios"]
 BRIEF_KEYS = ["input_mode", "brief", "brief_ver", "sketch_files", "brief_ai_json", "brief_ai_got", "brief_used_ai",
               "brief_rooms_live", "sketch_uploader", "brief_added", "ui_choice"]

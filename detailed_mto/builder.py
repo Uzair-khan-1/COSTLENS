@@ -263,6 +263,7 @@ def build_project(project_inputs, params, kb: KnowledgeBase, facts=None, files: 
     fdn_depth = fd[0] if fd else (_est(params.footings.founding_depth_m, 1.2) * M_TO_FT if params.footings.founding_depth_m else 3.5)
     p.set("FDN_STRIP", "Strip (load-bearing) foundations", 1 if strip else 0, "flag", "Foundation",
           "Drawings" if fact("foundation", "strip") else "Step 3", HIGH if fact("foundation", "strip") else MEDIUM)
+    strip = p.v("FDN_STRIP") >= 0.5  # the owner's answer ("how is the house built?") wins
     p.set("FDN_DEPTH", "Founding depth below NSL", fdn_depth, "ft", "Foundation", fd[1] if fd else "Step 3 / default",
           HIGH if fd else MEDIUM)
     p.set("STRIP_LEN_9", "Strip foundation length under 9in walls", gfl.wall9_len_ft if (gfl and strip) else 0, "rft",
@@ -433,6 +434,7 @@ def build_project(project_inputs, params, kb: KnowledgeBase, facts=None, files: 
     p.set("PAVING_AREA", "Porch / driveway paving", porch, "sft", "External", "Porch room dimensions", HIGH if porch else ASSUMED)
     p.set("APRON_LEN", "Plinth protection length", (pw or 0) if built_to_sides else (gfl.ext_perimeter_ft if gfl else 0), "rft",
           "External", "Exposed frontage", ASSUMED)
+    p.set("CLADDING_AREA", "Front elevation cladding area", 0, "sft", "External", "Not measured - owner's answer", ASSUMED)
     p.set("RWH_N", "Rainwater recharge wells", 1 if p.options.include_rwh else 0, "Nos", "External",
           "CDA requirement (not in drawings)", ASSUMED)
 

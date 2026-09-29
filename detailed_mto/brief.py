@@ -467,38 +467,8 @@ def brief_to_inputs(brief: ProjectBrief) -> dict:
             room_rows.append({"Floor": "roof", "Room": "MUMTY", "Room type": "Mumty", "Length (ft)": side, "Width (ft)": side,
                               "Source": "Typical mumty", "Confidence": ASSUMED})
 
-    # key answers -> engine parameters (shown as the user's own inputs in Step 3)
-    n = lambda *types: sum(1 for r in rooms if r.room_type in types)  # noqa: E731
-    ov: Dict[str, float] = {
-        "H_FLOOR": brief.floor_height_ft,
-        "H_PLINTH": brief.plinth_ft,
-        "PLOT_W": w,
-        "PLOT_D": d,
-        "EXT_EXPOSED_FRAC": {"Both sides shared": 0.6, "One side shared (corner)": 0.8}.get(brief.side_walls, 1.0),
-        "GATE_W": brief.gate_width_ft,
-    }
-    ac = 0
-    if "Bedrooms" in brief.ac_rooms:
-        ac += n("Bedroom")
-    if "Lounges" in brief.ac_rooms:
-        ac += n("Lounge / TV lounge")
-    if "Drawing room" in brief.ac_rooms:
-        ac += n("Drawing room")
-    ov["N_AC"] = ac
-    geysers = max(1, len(brief.floor_keys()))
-    ov["N_GEYSER"] = geysers
-    ug_side = math.sqrt(max(brief.ug_tank_gal, 100) / 6.229 / 5.0)
-    ov.update({"UGT_L": round(ug_side, 2), "UGT_W": round(ug_side, 2), "UGT_D": 5.0})
-    ov["N_OHT"] = 1 if brief.oh_tank_gal > 0 else 0
-    ov["SEPTIC_N"] = 1 if brief.sewer == "Septic tank" else 0
-    if brief.boundary == "None":
-        ov["BOUNDARY_LEN"] = 0
-    elif brief.boundary == "Front wall + gate only":
-        ov["BOUNDARY_LEN"] = max(w - brief.gate_width_ft, 0)
-    else:
-        ov["BOUNDARY_LEN"] = max(2 * d + w - brief.gate_width_ft, 0)
-    if brief.water_heating != "Gas geyser":
-        ov["N_GAS"] = n("Kitchen")
+    # only what the owner told us about the plot; services, finishes and outside works are chosen in Step 3
+    ov: Dict[str, float] = {"PLOT_W": w, "PLOT_D": d}
     return {"rooms": room_rows, "openings": _openings(rooms, len(brief.floor_keys()), brief.mumty), "floors": floors,
             "overrides": ov, "structure": "strip" if load_bearing else "isolated", "load_bearing": load_bearing}
 

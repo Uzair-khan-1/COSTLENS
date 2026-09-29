@@ -20,7 +20,7 @@ from drawing_processing.pdf_processor import process_pdf
 from engineering import plot_templates
 from models.schemas import ProjectInputs
 from ui import mto_views
-from ui.state import clear_dmto_review, go_to_step
+from ui.state import clear_dmto_review, clear_drawing_derived_state, go_to_step
 
 
 # ---------------------------------------------------------------------------
@@ -164,6 +164,47 @@ def _render_found_summary(facts, scan) -> None:
                "start from common standards and are marked for checking.")
 
 
+def _switch_to_questions() -> None:
+    """Drawings can't be read (or none uploaded): continue with the guided questions - never a 'typical house'."""
+    clear_drawing_derived_state()
+    st.session_state["input_mode"] = "sketch"
+    st.session_state["ui_choice"] = "sketch"
+    st.session_state["uploaded_files"] = []
+    st.session_state["uploaded_signature"] = None
+    st.session_state["brief"] = None
+    go_to_step(2)
+    st.rerun()
+
+
+def _render_plot_check(facts, pi) -> bool:
+    """Plot size is read from the drawings (site plan / area statement). If it isn't there, the owner must enter it."""
+    from ui.guide import section
+    w = facts.plot.get("plot_width_ft")
+    d = facts.plot.get("plot_depth_ft")
+    msq = pi.marla_sqft or 272.25
+    if w and d:
+        st.session_state.pop("plot_dims_user", None)
+        area = w[0] * d[0]
+        st.success(f"\U0001f4d0 **Plot size read from your drawings:** {w[0]:g} ft x {d[0]:g} ft = {area:,.0f} sq ft "
+                   f"\u2248 **{area / msq:.1f} marla** (1 marla = {msq:g} sq ft in {pi.location or 'your city'}).  \n"
+                   f"<span style='opacity:.7;font-size:13px'>Source: {w[1]}</span>", icon=None)
+        return True
+    section("\U0001f4d0 Plot size", "We could not find the plot dimensions on the drawings. Please enter them (in feet).")
+    prev = st.session_state.get("plot_dims_user") or (None, None)
+    c1, c2, c3 = st.columns([1, 1, 2])
+    pw = c1.number_input("Plot width at the road (ft)", min_value=10.0, max_value=300.0, value=prev[0], step=0.5,
+                         placeholder="e.g. 30", key="plot_w_in")
+    pd_ = c2.number_input("Plot depth (ft)", min_value=10.0, max_value=400.0, value=prev[1], step=0.5, placeholder="e.g. 45",
+                          key="plot_d_in")
+    if pw and pd_:
+        st.session_state["plot_dims_user"] = (float(pw), float(pd_))
+        c3.markdown(f"<div style='padding-top:30px'>= {pw * pd_:,.0f} sq ft \u2248 <b>{pw * pd_ / msq:.1f} marla</b></div>",
+                    unsafe_allow_html=True)
+        return True
+    c3.markdown("<div style='padding-top:30px;color:#C2410C'>Both values are needed to continue.</div>", unsafe_allow_html=True)
+    return False
+
+
 def step_2():
     from ui.guide import step_header
     step_header(2)
@@ -171,19 +212,14 @@ def step_2():
 
     uploaded_files = st.session_state.get("uploaded_files") or []
     if not uploaded_files:
-        if pi.plot_marla:
-            st.info(
-                f"No drawing uploaded - we start from a typical {pi.plot_marla:g} marla house. "
-                "You can check and change every room and size in the next step, or go back and upload the drawings."
-            )
-        else:
-            st.info("No drawing was uploaded. You can go back to upload one, or skip straight to manual entry with standard defaults.")
-        if st.button("\u2190 Back to Step 1"):
+        st.info("No drawings were uploaded. Go back and upload them - or answer a few questions about your house instead "
+                "(we never make up a 'typical house').")
+        c1, c2 = st.columns(2)
+        if c1.button("\u2190 Back to Step 1"):
             go_to_step(1)
             st.rerun()
-        if st.button("Continue with a typical house \u2192", type="primary"):
-            _finish_step_2(base_params(pi), used_ai=False)
-            st.rerun()
+        if c2.button("\u270f\ufe0f Answer questions about my house \u2192", type="primary"):
+            _switch_to_questions()
         return
 
     # ---- 1. Free analysis of the whole package (text + vectors, no AI) ----
@@ -259,14 +295,20 @@ def step_2():
     )
     project_context_for_ai = "\n".join(p for p in [project_context, plot_hint, _wall_hint] if p)
 
+    _readable = facts.has_facts() and any(f.rooms for k, f in facts.floors.items() if k != "roof")
+    plot_ok = _render_plot_check(facts, pi) if _readable else False
     c1, c2 = st.columns(2)
     with c1:
-        _readable = facts.has_facts()
-        skip_clicked = st.button(
-            "\u2705 Looks right - continue \u2192" if _readable else "Continue with typical-house values \u2192",
-            type="primary" if _readable else "secondary", width="stretch",
-            help="Recommended for CAD PDFs: everything read from the drawings is used; defaults fill the rest." if _readable
-            else "Nothing could be read from these drawings - Step 3 will start from a typical house that you must correct.")
+        if _readable:
+            skip_clicked = st.button("\u2705 Looks right - continue \u2192", type="primary", width="stretch", disabled=not plot_ok,
+                                     help="Everything read from the drawings is used; in the next step you choose what you want "
+                                          "in the house and we ask only for what is missing.")
+        else:
+            st.warning("We could not read rooms and sizes from these drawings (scanned images or photos). "
+                       "Ask the AI to read them, or answer a few questions about your house instead.")
+            if st.button("\u270f\ufe0f Answer questions about my house \u2192", type="primary", width="stretch"):
+                _switch_to_questions()
+            skip_clicked = False
     with c2:
         analyze_clicked = st.button("\U0001f9e0 Also ask the AI to fill gaps (optional)", width="stretch",
                                     help="Optional. Sends the most useful pages (automatically resized to fit the free AI limits) to the vision model "

@@ -182,7 +182,7 @@ def _(p, kb, wq):
 
 
 @d("PLS-003", "PLS-006", "FLR-005", "FLR-013", "FLR-015", "FLR-016", "DWG-012", "DWG-018", "JNR-008", "JNR-010",
-   "PNT-006", "PNT-012", "EXT-005", "EXT-010", "EXT-012", "HVC-011", "SOL-002", "PWS-015", "PDR-019", "ELE-003",
+   "PNT-006", "PNT-012", "EXT-005", "EXT-012", "HVC-011", "SOL-002", "PWS-015", "PDR-019", "ELE-003",
    "SAN-012", "RWH-006")
 def _(p, kb, wq):
     return None
@@ -570,3 +570,11 @@ def _(p, kb, wq):
 @d("MSC-009")
 def _(p, kb, wq):
     return math.ceil(_q(wq, "WI-EW-09") / kb.k("K_TROLLEY_CFT")) + 5, MEDIUM, "surplus earth / trolley + 5 debris trips"
+
+
+@d("EXT-010")
+def _(p, kb, wq):
+    a = p.v("CLADDING_AREA")
+    if a <= 0:
+        return None
+    return a, p.conf("CLADDING_AREA"), f"front elevation cladding {a:,.0f} sft (owner's answer)"

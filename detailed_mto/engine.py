@@ -139,10 +139,10 @@ class DetailedResult:
 
     def scoped_work_items(self) -> List[WorkItemLine]:
         if self.scope == "Complete Project":
-            return list(self.work_items)
+            return [w for w in self.work_items if w.status != ST_SCOPE]
         used = {c.wi_id for c in self.scoped_contributions()}
         allowed = SCOPE_TO_MAT_SCOPES.get(self.scope) or set()
-        return [w for w in self.work_items if w.wi_id in used or w.scope in allowed]
+        return [w for w in self.work_items if w.status != ST_SCOPE and (w.wi_id in used or w.scope in allowed)]
 
 
 # ---------------------------------------------------------------------------
@@ -248,9 +248,10 @@ def compute(project: DetailedProject, kb: KnowledgeBase, scope: Optional[str] = 
     # 2) recipe contributions
     contributions: List[Contribution] = []
     per_mat: Dict[str, List[Contribution]] = {}
+    excl_wi, excl_mat = set(p.options.excluded_wis or ()), set(p.options.excluded_mats or ())
     for r in kb.recipes:
         w = wq.get(r.wi_id)
-        if w is None or not w.selected or w.qty == 0:
+        if w is None or not w.selected or w.qty == 0 or r.wi_id in excl_wi or r.mat_id in excl_mat:
             continue
         wi = kb.work_items[r.wi_id]
         coef, mix_ref = r.coefficient, r.mix_ref
@@ -285,7 +286,9 @@ def compute(project: DetailedProject, kb: KnowledgeBase, scope: Optional[str] = 
     wlines: List[WorkItemLine] = []
     for wid, wi in kb.work_items.items():
         w = wq[wid]
-        if not w.selected:
+        if wid in excl_wi:
+            status = ST_SCOPE  # the owner did not include this work in the scope
+        elif not w.selected:
             status = ST_OPTION if "error" not in w.calc.lower() and "needs input" not in w.calc.lower() else ST_NEEDS_INPUT
         elif w.qty == 0:
             status = ST_NOT_REQ
@@ -295,6 +298,10 @@ def compute(project: DetailedProject, kb: KnowledgeBase, scope: Optional[str] = 
                                    w.calc, wi.measurement_rule, wi.legacy_code))
 
     # 5) every material
+    recipe_wis: Dict[str, set] = {}
+    for r in kb.recipes:
+        recipe_wis.setdefault(r.mat_id, set()).add(r.wi_id)
+    incl_mat = set(p.options.included_mats or ())
     lines: List[MaterialLine] = []
     for mid, mat in kb.materials.items():
         contribs = per_mat.get(mid, [])
@@ -327,7 +334,10 @@ def compute(project: DetailedProject, kb: KnowledgeBase, scope: Optional[str] = 
                 if unread and conf != USER:
                     conf = ASSUMED
                 activated = _activated_direct(mid, p)
-        if not material_in_scope(kb, mat, scope):
+        if mid in incl_mat:
+            activated = True  # an alternative the owner chose (e.g. uPVC windows)
+        user_excluded = mid in excl_mat or (mid in recipe_wis and recipe_wis[mid] <= excl_wi)
+        if not material_in_scope(kb, mat, scope) or user_excluded:
             status = ST_SCOPE
         elif not contribs and (_direct.DIRECT.get(mid) is None or res is None):
             status = ST_NEEDS_INPUT if (tier not in OPTIONAL_TIERS or p.options.include_options) else ST_OPTION

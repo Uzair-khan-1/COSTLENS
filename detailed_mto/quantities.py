@@ -492,11 +492,19 @@ def _finish_rooms(p, predicate):
     return [r for r in p.rooms if predicate(r)]
 
 
+DRY_ROOMS = ("Bedroom", "Lounge / TV lounge", "Mumty", "Store / utility", "Servant quarter", "Drawing room")
+
+
+def _dry_area(p):
+    rooms = _finish_rooms(p, lambda r: r.room_type in DRY_ROOMS)
+    return rooms, sum(r.area for r in rooms)
+
+
 @wi("WI-FL-01")
 def _fl01(p, kb, q):
-    rooms = _finish_rooms(p, lambda r: r.room_type in ("Bedroom", "Lounge / TV lounge", "Mumty", "Store / utility",
-                                                       "Servant quarter", "Drawing room"))
-    a = sum(r.area for r in rooms)
+    rooms, a = _dry_area(p)
+    if getattr(p.options, "floor_finish", "Porcelain") != "Porcelain":
+        return WIQty(0.0, HIGH, f"dry rooms are finished in {p.options.floor_finish.lower()} (owner's choice)")
     return WIQty(a, worst(*(r.confidence for r in rooms)) if rooms else ASSUMED,
                  f"{len(rooms)} dry rooms: " + ", ".join(f"{r.name} {_f(r.area)}" for r in rooms[:12]) + f" = {_f(a)} sft")
 
@@ -505,15 +513,26 @@ def _fl01(p, kb, q):
 def _fl02(p, kb, q):
     rooms = _finish_rooms(p, lambda r: r.is_wet)
     a = sum(r.area for r in rooms)
-    return WIQty(a, worst(*(r.confidence for r in rooms)) if rooms else ASSUMED, f"{len(rooms)} wet rooms = {_f(a)} sft")
+    calc = f"{len(rooms)} wet rooms = {_f(a)} sft"
+    if getattr(p.options, "floor_finish", "Porcelain") == "Ceramic":
+        dry, da = _dry_area(p)
+        rooms, a = rooms + dry, a + da
+        calc += f" + {len(dry)} dry rooms in ceramic (owner's choice) {_f(da)} sft"
+    return WIQty(a, worst(*(r.confidence for r in rooms)) if rooms else ASSUMED, calc)
 
 
 @wi("WI-FL-03")
 def _fl03(p, kb, q):
     tot = 0.0
+    bath_h = getattr(p.options, "bath_tile_height_ft", -1.0)
+    kit_h = getattr(p.options, "kitchen_tile_height_ft", -1.0)
     for r in p.rooms:
         rd = next((d for d in kb.room_defaults if d.room_type == r.room_type), None)
         th = rd.wall_tile_height_ft if rd else 0
+        if r.room_type == "Bathroom" and bath_h >= 0:
+            th = bath_h  # owner's choice (full height / dado / none)
+        elif r.room_type == "Kitchen" and kit_h >= 0:
+            th = kit_h
         if th:
             per = r.perimeter if r.room_type != "Kitchen" else (r.length_ft + r.width_ft)  # backsplash on counter walls
             tot += per * th - (2.5 * th if r.room_type == "Bathroom" else 0)
@@ -524,7 +543,12 @@ def _fl03(p, kb, q):
 def _fl04(p, kb, q):
     stairs = p.rooms_of("Staircase")
     a = sum(r.area for r in stairs) * 0.5  # landings & lobby; treads in WI-FL-06
-    return WIQty(a, MEDIUM if stairs else ASSUMED, f"stair hall landings/lobby 50% of {_f(sum(r.area for r in stairs))} sft")
+    calc = f"stair hall landings/lobby 50% of {_f(sum(r.area for r in stairs))} sft"
+    if getattr(p.options, "floor_finish", "Porcelain") == "Marble":
+        dry, da = _dry_area(p)
+        a += da
+        calc += f" + {len(dry)} dry rooms in marble (owner's choice) {_f(da)} sft"
+    return WIQty(a, MEDIUM if stairs else ASSUMED, calc)
 
 
 @wi("WI-FL-05")

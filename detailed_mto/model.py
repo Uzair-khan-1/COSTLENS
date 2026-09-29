@@ -110,6 +110,13 @@ class Options:
     include_options: bool = False  # also quantify Optional/Premium/Alternative materials
     seismic_bands: bool = True
     rcc_mix: str = "MX_RCC124"  # structural RCC nominal mix: MX_RCC124 (1:2:4, drawing spec) | MX_RCC1153 (1:1.5:3)
+    # ---- user-defined scope of work & specifications (detailed_mto/scope.py) ----
+    excluded_wis: tuple = ()  # work items the owner did NOT include in the scope
+    excluded_mats: tuple = ()  # materials not in scope / replaced by the owner's choice
+    included_mats: tuple = ()  # alternatives the owner chose (e.g. uPVC windows, floor-mounted WC)
+    floor_finish: str = "Porcelain"  # Porcelain | Ceramic | Marble - dry rooms
+    bath_tile_height_ft: float = -1.0  # -1 = use the room-type standard; 0 = no wall tiles
+    kitchen_tile_height_ft: float = -1.0
 
 
 @dataclass
