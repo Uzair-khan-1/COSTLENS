@@ -95,3 +95,12 @@ def test_concept_plan_svg():
                      {"Room": "PORCH", "Room type": "Porch / car porch", "Length (ft)": 12, "Width (ft)": 17},
                      {"Room": "x", "Room type": "Bathroom", "Length (ft)": "bad", "Width (ft)": 5}], 30, "Ground floor")
     assert svg.startswith("<svg") and "BED" in svg and "PORCH" in svg and svg.count("<rect") == 4  # background panel + outline + 2 rooms
+
+
+def test_scope_answers_survive_save_and_open(session):
+    s = dict(session, scope_sel=["floor", "windows"], scope_confirmed=True,
+             spec_answers={"floor_type": "Marble", "win_size": (5.0, 5.0)}, assumptions_ack="abc123", plot_dims_user=(30.0, 45.0))
+    back = project_from_json(project_to_json(s))
+    assert back["scope_sel"] == ["floor", "windows"] and back["scope_confirmed"] is True
+    assert back["spec_answers"] == {"floor_type": "Marble", "win_size": (5.0, 5.0)}
+    assert back["assumptions_ack"] == "abc123" and back["plot_dims_user"] == (30.0, 45.0)

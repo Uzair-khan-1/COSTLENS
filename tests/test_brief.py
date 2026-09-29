@@ -86,20 +86,16 @@ def test_brief_to_takeoff_is_plausible(kb):
     bricks = sum(m.gross_qty for m in res.materials if m.material.mat_id in ("MAS-001", "MAS-002")) / cov
     assert 0.25 < cement < 0.6 and 15 < bricks < 40
     assert all(m.gross_qty >= 0 for m in res.materials)
-    # the owner's answers become the user's own inputs
-    assert p.conf("H_FLOOR") == "User" and p.v("N_AC") > 0
+    # the plot the owner entered is the owner's own input; services come from Step 3 (scope), not from the brief
+    assert p.conf("PLOT_W") == "User" and p.conf("PLOT_D") == "User"
+    assert "N_AC" not in brief_to_inputs(b)["overrides"]
 
 
-def test_answers_change_quantities(kb):
-    b = ProjectBrief(storeys=2)
+def test_brief_does_not_assume_services():
+    b = ProjectBrief(storeys=2, plot_width_ft=30, plot_depth_ft=45)
     b.rooms = typical_rooms(b)
-    _, r1 = _run(kb, b)
-    b.boundary = "Front, back & sides"
-    b.sewer = "Septic tank"
-    _, r2 = _run(kb, b)
-    assert r2.project.v("BOUNDARY_LEN") > r1.project.v("BOUNDARY_LEN")
-    assert r2.project.v("SEPTIC_N") == 1 and r1.project.v("SEPTIC_N") == 0
-    assert r2.by_id("MAS-001").gross_qty > r1.by_id("MAS-001").gross_qty
+    ov = brief_to_inputs(b)["overrides"]
+    assert set(ov) == {"PLOT_W", "PLOT_D"}
 
 
 def test_floor_height_edit_follows_concept_floors(kb):
