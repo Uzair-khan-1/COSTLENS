@@ -1,4 +1,4 @@
-# CostLens — *From plans to materials.* (v0.10.0)
+# CostLens — *From plans to materials.* (v0.11.0)
 
 A drawing-based **Material Take-Off (MTO)** tool for 5-10 marla houses in
 Pakistan. Upload the complete drawing set (CAD-exported PDFs work best); the
@@ -571,6 +571,23 @@ lines). See **[DETAILED_MTO.md](DETAILED_MTO.md)**.
 ---
 
 ## 8. Changelog
+
+**v0.11.0 — "When can I move in?": target-driven schedule with real manpower**
+- The owner picks a target (4-12 months); the planner (`scheduling/planner.py`) builds the programme from the
+  BOQ quantities of the owner's scope and adds crews to the critical jobs - best days saved per extra worker -
+  until the target is met. Crews never exceed what fits on the activity (site space) and the plot's capacity
+  (~1 worker per 55 sq ft, 14-35); curing and drying waits are never shortened. Too-fast targets are explained
+  and the fastest realistic plan is shown; "normal pace" (one crew per job) and "fastest" are shown up front.
+- Real crews per work item (`scheduling/productivity.py`: mason 2+4 labour, steel fixers 2+2, shuttering, concrete
+  gang with mixer, tile fixers, painters, electricians, plumbers, welders ...). Every day of the programme has a
+  worker count per trade; resource levelling delays work when the site is full.
+- Homeowner view: move-in date, most workers at once, total worker-days, skilled trades; colourful stage timeline
+  with milestones (foundations, each roof slab, grey structure, plaster, finishes, move-in); weekly "workers on
+  site" chart by trade; "Who to hire, and when"; month-by-month plan; material order dates.
+- Engineer mode: calendar, curing & productivity; crews per activity (locked against the planner); dependency lags;
+  detailed Gantt with critical path & float; daily manpower; progress tracking with a saved baseline, S-curve,
+  ahead/behind and forecast finish.
+- Excel: new Manpower and Manpower_by_week sheets. Schedule settings, target and baseline are saved in project files.
 
 **v0.10.0 — a real estimating assistant: no silent assumptions**
 - **Plot size is read from the drawings** (site plan / area statement) - no more 5/7/10 marla buttons. If it is not

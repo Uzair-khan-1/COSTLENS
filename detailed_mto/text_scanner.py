@@ -47,6 +47,17 @@ class DoorRow:
 
 
 @dataclass
+class WindowRow:
+    name: str
+    width_ft: float
+    height_ft: float
+    qty: int
+    sill_ft: float
+    kind: str  # window | ventilator
+    source: str
+
+
+@dataclass
 class ScanResult:
     label_counts: Dict[str, int] = field(default_factory=dict)  # max count on any single sheet, summed over floors
     per_page: Dict[int, Dict[str, int]] = field(default_factory=dict)
@@ -57,6 +68,8 @@ class ScanResult:
     septic_detail: Optional[Tuple[float, float]] = None
     ug_tank_detail: Optional[Tuple[float, float]] = None
     oh_tank_detail: Optional[Tuple[float, float]] = None
+    windows: List[WindowRow] = field(default_factory=list)  # from a window schedule table
+    gate: Optional[Tuple[float, float]] = None  # main gate (width, height) from a schedule
     detail_only: set = field(default_factory=set)
     sources: Dict[str, str] = field(default_factory=dict)
     notes: List[str] = field(default_factory=list)
@@ -190,6 +203,15 @@ def scan_pdf_bytes(files: List[dict]) -> ScanResult:
                 rows = _parse_door_schedule(lines, src)
                 if rows:
                     res.doors = rows
+            # schedule TABLES with separate columns (Symbol | Width | Height | Count | Sill)
+            if "SCHEDULE" in full and "WIDTH" in full and "HEIGHT" in full:
+                tdoors, twins, gate = _parse_schedule_tables(lines, src)
+                if tdoors and not res.doors:
+                    res.doors = tdoors
+                if twins:
+                    res.windows = twins
+                if gate:
+                    res.gate = gate
             # overhead tank
             for t, _ in lines:
                 mg = _GAL.search(t)
@@ -281,3 +303,90 @@ def _tank_details(lines) -> Dict[str, Tuple[float, float]]:
                 best[kind] = a * b
                 out[kind] = (a, b)
     return out
+
+
+_HEAD = {"symbol": r"^(SYMBOL|MARK|TYPE|TAG|CODE|ID|NO\.?)$", "width": r"^WIDTH$", "height": r"^HEIGHT$",
+         "count": r"^(COUNT|QTY|QUANTITY|NOS\.?|NUMBER)$", "sill": r"^SILL( LEVEL| HEIGHT| LVL)?$", "name": r"^(NAME|DESCRIPTION|LOCATION)$"}
+
+
+def _ft(text: str) -> Optional[float]:
+    t = text.strip()
+    m = re.fullmatch(_FTIN, t)
+    if m:
+        return _ftin(m.group(1), m.group(2))
+    m = re.fullmatch(r"(\d{1,3})\s*\"", t)
+    return float(m.group(1)) / 12.0 if m else None
+
+
+def _parse_schedule_tables(lines, src: str):
+    """Door / window schedule TABLES whose columns are separate text items, e.g.
+         Door Schedule                      Window Schedule
+         Symbol Width Height Count          Symbol Width Height Count Sill Level
+         D1     3'-6" 7'-0"  2              W1     4'-0"  5'-0"  2     2'-0"
+    Returns (door rows, window rows, gate (w, h) or None)."""
+    doors: List[DoorRow] = []
+    wins: List[WindowRow] = []
+    gate = None
+    items = [(t.strip(), bb) for t, bb in lines]
+    heads = [(t, bb) for t, bb in items if re.fullmatch(_HEAD["symbol"], t.upper())]
+    for _st, sbb in heads:
+        yc = (sbb[1] + sbb[3]) / 2
+        row = sorted([(t, bb) for t, bb in items if abs((bb[1] + bb[3]) / 2 - yc) <= 8], key=lambda x: x[1][0])
+        # several tables can share one header line (door + window schedules side by side): this table runs from
+        # its own 'Symbol' cell to the next 'Symbol' cell on the same line
+        sym_x = sorted(bb[0] for t, bb in row if re.fullmatch(_HEAD["symbol"], t.upper()))
+        nxt = next((x for x in sym_x if x > sbb[0] + 5), 1e9)
+        row = [(t, bb) for t, bb in row if sbb[0] - 5 <= bb[0] < nxt - 5]
+        cols = {}
+        for t, bb in row:
+            for k, pat in _HEAD.items():
+                if re.fullmatch(pat, t.upper()) and k not in cols:
+                    cols[k] = (bb[0] + bb[2]) / 2
+        if not {"width", "height"} <= set(cols):
+            continue
+        x_lo, x_hi = min(cols.values()) - 80, min(max(cols.values()) + 80, nxt - 5)
+        # the table title just above the header decides doors vs windows
+        title = ""
+        for t, bb in items:
+            if "SCHEDULE" in t.upper() and 0 < yc - (bb[1] + bb[3]) / 2 < 120 and x_lo - 150 <= (bb[0] + bb[2]) / 2 <= x_hi + 150:
+                title = t.upper()
+        is_window = "WINDOW" in title or "sill" in cols
+        # data rows below the header, until a gap
+        below = sorted([(t, bb) for t, bb in items if (bb[1] + bb[3]) / 2 > yc + 6 and x_lo <= (bb[0] + bb[2]) / 2 <= x_hi],
+                       key=lambda x: (x[1][1] + x[1][3]) / 2)
+        rows_by_y: List[list] = []
+        last_y = yc
+        for t, bb in below:
+            cy = (bb[1] + bb[3]) / 2
+            if cy - last_y > 90:
+                break
+            if rows_by_y and abs(cy - rows_by_y[-1][0]) <= 8:
+                rows_by_y[-1][1].append((t, bb))
+            else:
+                rows_by_y.append([cy, [(t, bb)]])
+            last_y = cy
+        for _cy, cells in rows_by_y:
+            rec = {}
+            for t, bb in cells:
+                cx = (bb[0] + bb[2]) / 2
+                k = min(cols, key=lambda c: abs(cols[c] - cx))
+                rec.setdefault(k, t)
+            w, h = _ft(rec.get("width", "")), _ft(rec.get("height", ""))
+            try:
+                qty = int(float(rec.get("count", "1") or 1))
+            except ValueError:
+                qty = 1
+            sym = rec.get("symbol") or rec.get("name") or ""
+            if not (w and h) or qty <= 0 or not sym:
+                continue
+            u = sym.upper()
+            if u in ("MG", "G", "GATE") or "GATE" in u:
+                gate = (w, h)
+            elif is_window or u.startswith(("W", "V")):
+                kind = "ventilator" if (u.startswith("V") or (h <= 2.0 and w <= 3.0)) else "window"
+                sill = _ft(rec.get("sill", "")) or 0.0
+                wins.append(WindowRow(sym, w, h, qty, sill, kind, src))
+            else:
+                leaves = 2 if w >= 4.5 else 1
+                doors.append(DoorRow(f"{sym} door", w, h, qty, leaves, 5.0, src))
+    return doors, wins, gate

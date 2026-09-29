@@ -118,6 +118,32 @@ def _options_from(d: Optional[dict]) -> Options:
     return Options(**{k: v for k, v in (d or {}).items() if k in allowed})
 
 
+def _sched_in(d: Optional[dict]):
+    if not d:
+        return None
+    from scheduling.engine import ScheduleSettings
+    allowed = {x.name for x in fields(ScheduleSettings)}
+    return ScheduleSettings(**{k: v for k, v in d.items() if k in allowed})
+
+
+def _baseline_out(b: Optional[dict]) -> Optional[dict]:
+    if not b:
+        return None
+    return {"saved": b["saved"], "finish": b["finish"].isoformat(), "wd": b["wd"], "total": b["total"],
+            "curve": [[d.isoformat(), v] for d, v in b["curve"]]}
+
+
+def _baseline_in(b: Optional[dict]) -> Optional[dict]:
+    if not b:
+        return None
+    from datetime import date as _d
+    try:
+        return {"saved": b["saved"], "finish": _d.fromisoformat(b["finish"]), "wd": b["wd"], "total": b["total"],
+                "curve": [(_d.fromisoformat(d), float(v)) for d, v in b["curve"]]}
+    except (KeyError, ValueError, TypeError):
+        return None
+
+
 def _brief_from(d: Optional[dict]) -> Optional[ProjectBrief]:
     if not d:
         return None
@@ -160,6 +186,10 @@ def project_to_dict(ss: Dict[str, Any], include_drawings: bool = False) -> dict:
         "spec_answers": {k: (list(v) if isinstance(v, tuple) else v) for k, v in (ss.get("spec_answers") or {}).items()},
         "assumptions_ack": ss.get("assumptions_ack") or "",
         "plot_dims_user": list(ss.get("plot_dims_user")) if ss.get("plot_dims_user") else None,
+        # schedule: calendar/crew/rate/lag/progress settings, target months, saved baseline
+        "sched_settings": _dc(ss.get("sched_settings")) if ss.get("sched_settings") is not None else None,
+        "sched_target": ss.get("sched_target"),
+        "sched_baseline": _baseline_out(ss.get("sched_baseline")),
         "drawings": None,
     }
     if include_drawings and ss.get("uploaded_files"):
@@ -211,6 +241,9 @@ def project_from_json(raw: bytes) -> Dict[str, Any]:
         "spec_answers": {k: (tuple(v) if isinstance(v, list) else v) for k, v in (d.get("spec_answers") or {}).items()},
         "assumptions_ack": d.get("assumptions_ack") or "",
         "plot_dims_user": tuple(d["plot_dims_user"]) if d.get("plot_dims_user") else None,
+        "sched_settings": _sched_in(d.get("sched_settings")),
+        "sched_target": d.get("sched_target"),
+        "sched_baseline": _baseline_in(d.get("sched_baseline")),
         "step": min(int(d.get("step", 1)), 4 if has_params else 1), "max_step": int(d.get("max_step", 1)) if has_params else 1,
         "dmto_result": None,
     }

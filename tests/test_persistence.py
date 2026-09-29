@@ -104,3 +104,15 @@ def test_scope_answers_survive_save_and_open(session):
     assert back["scope_sel"] == ["floor", "windows"] and back["scope_confirmed"] is True
     assert back["spec_answers"] == {"floor_type": "Marble", "win_size": (5.0, 5.0)}
     assert back["assumptions_ack"] == "abc123" and back["plot_dims_user"] == (30.0, 45.0)
+
+
+def test_schedule_settings_survive_save_and_open(session):
+    from datetime import date
+    from scheduling import ScheduleSettings
+    s = dict(session, sched_settings=ScheduleSettings(start_date="2026-10-05", gang_overrides={"PTI": 2.0},
+                                                      progress={"PRE": 100.0}, status_date="2026-10-20"),
+             sched_target=6, sched_baseline={"saved": "05 Oct 2026", "finish": date(2027, 4, 5), "wd": {"PRE": 20.0},
+                                             "total": 1500.0, "curve": [(date(2026, 10, 5), 5.0)]})
+    back = project_from_json(project_to_json(s))
+    assert back["sched_settings"].gang_overrides == {"PTI": 2.0} and back["sched_settings"].progress == {"PRE": 100.0}
+    assert back["sched_target"] == 6 and back["sched_baseline"]["finish"] == date(2027, 4, 5)

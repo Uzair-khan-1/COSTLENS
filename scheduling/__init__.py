@@ -12,6 +12,7 @@ working-day calendar gives dates, float and the critical path.
 """
 from scheduling.engine import Activity, Schedule, ScheduleSettings, build_schedule, material_delivery_plan
 from scheduling.export import build_schedule_workbook
+from scheduling.planner import TargetPlan, plan_for_target, site_capacity
 
 __all__ = ["Activity", "Schedule", "ScheduleSettings", "build_schedule", "material_delivery_plan",
-           "build_schedule_workbook"]
+           "build_schedule_workbook", "TargetPlan", "plan_for_target", "site_capacity"]

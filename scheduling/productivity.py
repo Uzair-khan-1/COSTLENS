@@ -153,3 +153,91 @@ FALLBACK_RATE = (1.0, "no norm - edit")
 
 def default_rate(template: str, wi_id: str) -> Tuple[float, str]:
     return ACTIVITY_RATES.get((template, wi_id)) or DEFAULT_RATES.get(wi_id) or FALLBACK_RATE
+
+
+# ---------------------------------------------------------------------------
+# CREWS - who actually does the work (Pakistani site practice, 5-10 marla houses)
+# ---------------------------------------------------------------------------
+# Trade names shown to the owner, with the word used on site.
+TRADES = {
+    "Mason": "Mason (mistri)", "Labourer": "Labourer (mazdoor)", "Steel fixer": "Steel fixer (sarya binder)",
+    "Shuttering carpenter": "Shuttering carpenter", "Carpenter": "Carpenter (tarkhan)", "Mixer operator": "Mixer operator",
+    "Electrician": "Electrician", "Plumber": "Plumber", "Tile fixer": "Tile / marble fixer", "Painter": "Painter (rang-saz)",
+    "Welder": "Welder / steel fabricator", "Aluminium fitter": "Aluminium / uPVC fitter", "Waterproofer": "Waterproofing applicator",
+    "Ceiling fixer": "False-ceiling fixer", "AC technician": "AC technician", "Gas fitter": "Gas fitter", "Stone fixer": "Granite fixer",
+    "Helper": "Helper",
+}
+
+# crew key -> (composition {trade: number}, max crews that can work on ONE activity at once)
+CREWS: Dict[str, Tuple[Dict[str, int], int]] = {
+    "earth": ({"Labourer": 4}, 4),
+    "termite": ({"Waterproofer": 1, "Helper": 1}, 1),
+    "haul": ({"Labourer": 3}, 2),
+    "concrete": ({"Mason": 1, "Mixer operator": 1, "Labourer": 10}, 2),  # one mixer per gang
+    "mason_small": ({"Mason": 2, "Labourer": 4}, 3),
+    "steel": ({"Steel fixer": 2, "Helper": 2}, 4),
+    "shutter_plate": ({"Shuttering carpenter": 1, "Helper": 4}, 3),
+    "shutter_timber": ({"Shuttering carpenter": 2, "Helper": 2}, 3),
+    "mason": ({"Mason": 2, "Labourer": 4}, 4),
+    "soling": ({"Mason": 1, "Labourer": 4}, 2),
+    "plaster": ({"Mason": 2, "Labourer": 3}, 4),
+    "roof": ({"Mason": 1, "Labourer": 6}, 2),
+    "waterproof": ({"Waterproofer": 1, "Helper": 2}, 2),
+    "tile": ({"Tile fixer": 2, "Helper": 2}, 4),
+    "carpenter": ({"Carpenter": 2}, 3),
+    "frames": ({"Carpenter": 1, "Helper": 1}, 3),
+    "aluminium": ({"Aluminium fitter": 2}, 2),
+    "welder": ({"Welder": 1, "Helper": 1}, 2),
+    "ceiling": ({"Ceiling fixer": 2, "Helper": 1}, 3),
+    "painter": ({"Painter": 3}, 4),
+    "polish": ({"Painter": 2}, 2),
+    "electric": ({"Electrician": 1, "Helper": 1}, 4),
+    "earthing": ({"Electrician": 1, "Labourer": 2}, 1),
+    "ac": ({"AC technician": 1, "Helper": 1}, 2),
+    "plumber": ({"Plumber": 1, "Helper": 1}, 3),
+    "drain": ({"Plumber": 1, "Labourer": 2}, 2),
+    "gas": ({"Gas fitter": 1, "Helper": 1}, 1),
+    "stone": ({"Stone fixer": 1, "Helper": 1}, 1),
+    "boring": ({"Mason": 1, "Labourer": 3}, 1),
+    "general": ({"Mason": 1, "Labourer": 3}, 1),
+    "handover": ({"Electrician": 1, "Plumber": 1, "Labourer": 2}, 1),
+}
+
+_CREW_BY_WI = {
+    "WI-EW-07": "termite", "WI-EW-08": "termite", "WI-EW-09": "haul",
+    "WI-CN-09": "mason_small", "WI-CN-10": "mason_small", "WI-CN-12": "mason_small", "WI-CN-13": "mason_small",
+    "WI-FW-01": "shutter_plate", "WI-FW-02": "shutter_timber", "WI-MS-05": "soling",
+    "WI-WP-01": "roof", "WI-WP-02": "roof", "WI-WP-03": "waterproof", "WI-WP-04": "mason",
+    "WI-DW-01": "frames", "WI-DW-02": "carpenter", "WI-DW-03": "carpenter", "WI-DW-04": "aluminium",
+    "WI-DW-05": "welder", "WI-DW-06": "welder", "WI-DW-07": "welder", "WI-CL-01": "ceiling",
+    "WI-PT-04": "polish", "WI-PT-05": "polish", "WI-EL-09": "earthing", "WI-HV-01": "ac", "WI-HV-02": "electric",
+    "WI-PB-11": "drain", "WI-PB-12": "mason_small", "WI-PB-13": "mason_small", "WI-GS-01": "gas",
+    "WI-KT-01": "carpenter", "WI-KT-02": "carpenter", "WI-KT-03": "stone", "WI-JN-01": "carpenter",
+    "WI-EX-01": "mason", "WI-EX-02": "boring", "WI-PRE-01": "general", "WI-PRE-02": "general",
+}
+_CREW_BY_PREFIX = [("WI-EW-", "earth"), ("WI-CN-", "concrete"), ("WI-RF-", "steel"), ("WI-MS-", "mason"), ("WI-PL-", "plaster"),
+                   ("WI-FL-", "tile"), ("WI-PT-", "painter"), ("WI-EL-", "electric"), ("WI-PB-", "plumber")]
+# activities with a fixed duration and no measured work
+FIXED_CREWS = {"PRE": "general", "HND": "handover", "WSS": "plumber"}
+
+
+def crew_of(wi_id: str) -> str:
+    if wi_id in _CREW_BY_WI:
+        return _CREW_BY_WI[wi_id]
+    for pre, crew in _CREW_BY_PREFIX:
+        if wi_id.startswith(pre):
+            return crew
+    return "general"
+
+
+def crew_size(crew: str) -> int:
+    return sum(CREWS.get(crew, ({}, 1))[0].values())
+
+
+# Space on site limits how many crews can work on one activity: one crew per this many sq ft of the floor
+# being worked on (masons need ~15-20 ft of wall each, tile gangs a room each ...). Documented planning rule.
+AREA_PER_CREW = {"MAS": 350, "PLI": 350, "FLR": 350, "PTI": 450, "ELR": 500, "PLR": 700, "FCL": 450, "EXP": 400,
+                 "COL": 700, "SLB": 450, "MUM": 700, "EXC": 350, "PCC": 600, "FTG": 450, "FMS": 400, "PLB": 500,
+                 "BKF": 450, "GFB": 400, "PAR": 500, "ROF": 500, "WIN": 700, "STM": 1500, "DOR": 900, "JNR": 900,
+                 "ELF": 600, "SAN": 900, "EXD": 900, "BND": 800, "OUT": 700, "PTE": 500, "PTM": 900, "RAI": 1500,
+                 "TNK": 1500, "DPC": 800}

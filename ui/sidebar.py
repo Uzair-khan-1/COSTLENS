@@ -94,7 +94,8 @@ def _render_project_box() -> None:
             keys = ("project_inputs", "extracted_params", "input_mode", "dmto_options", "dmto_rooms", "dmto_openings",
                     "dmto_overrides", "dmto_floors", "package_facts", "dmto_scan", "uploaded_signature", "drawing_filled",
                     "brief", "copilot_scenarios", "copilot_msgs", "uploaded_files", "step", "max_step",
-                    "scope_sel", "scope_confirmed", "spec_answers", "assumptions_ack", "plot_dims_user")
+                    "scope_sel", "scope_confirmed", "spec_answers", "assumptions_ack", "plot_dims_user",
+                    "sched_settings", "sched_target", "sched_baseline")
             snap = {k: st.session_state.get(k) for k in keys}  # built lazily on click (runs outside the script thread)
             st.download_button("\u2b07\ufe0f Download project file", data=lambda: project_to_json(snap, inc),
                                file_name=f"{name}.costlens.json", mime="application/json", width="stretch",

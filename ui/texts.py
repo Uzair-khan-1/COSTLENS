@@ -9,7 +9,7 @@ STEP_TITLES = {
     2: ("Your house design", "گھر کا نقشہ"),
     3: ("Your scope & details", "کام کی تفصیل اور ضروری معلومات"),
     4: ("Materials & Bill of Quantities", "سامان کی فہرست اور BOQ"),
-    5: ("Construction schedule & Gantt chart", "تعمیراتی شیڈول اور گینٹ چارٹ"),
+    5: ("When can I move in? Schedule & workers", "گھر کب تیار ہوگا؟ شیڈول اور مزدور"),
     6: ("Download & share", "ڈاؤن لوڈ اور شیئر کریں"),
 }
 STEP_TITLE_SKETCH_2 = ("Your requirements", "آپ کی ضروریات")
@@ -30,10 +30,10 @@ TIPS = {
          "'Things to double-check' tells you what may be wrong before you order.",
          "Ask the assistant anything, e.g. 'what if I use block walls?'"],
         "یہ آپ کی خریداری کی فہرست ہے - بوریاں، ٹن اور اینٹیں"),
-    5: (["Pick the start date and working days - the programme is worked out from your quantities.",
-         "Red bars are the critical path: any delay there delays the whole house.",
-         "Download the schedule and Gantt chart in Excel for your contractor."],
-        "کام کب شروع اور کب ختم ہوگا - ٹھیکیدار کے ساتھ شیڈول طے کریں"),
+    5: (["Pick when you want to move in (e.g. 6 months). The app plans every job and the workers needed to make it.",
+         "If your target is too fast, it tells you why and shows the fastest realistic plan.",
+         "Engineers: switch on Engineer mode for crews, dependencies, productivity, critical path and progress tracking."],
+        "کب تک گھر تیار چاہیے؟ مہینے چنیں - باقی حساب ایپ کرے گی"),
     6: (["Excel for your contractor, PDF or WhatsApp for your suppliers.",
          "Save the project file to continue later."],
         "ٹھیکیدار کے لیے ایکسل، دکاندار کے لیے PDF یا واٹس ایپ"),

@@ -131,6 +131,8 @@ _VIEW_PATTERNS = [
     ("section", r"\bSECTION\b|\bSEC\.\s*[A-Z]"),
     ("elevation", r"\bELEVATION\b"),
     ("plan", r"\b(BASEMENT|GROUND|FIRST|SECOND|THIRD|1ST|2ND|3RD|ROOF|MUMTY|TOP)\s*(FLOOR\s*)?PLAN\b"),
+    # generic plan titles: "ARCHITECTURAL PLAN", "FLOOR PLAN", "WORKING PLAN", "(Architectural Plan)" ...
+    ("plan", r"\b(ARCHITECTURAL|ARCHITECTURE|FLOOR|WORKING|FURNITURE|LAYOUT|HOUSE|QUARTER|PROPOSED)\s*PLAN\b"),
 ]
 
 
@@ -665,6 +667,58 @@ def calibrate_scale(lines: List[TextLine], H: list, V: list) -> Optional[Tuple[f
     return 1.0 / pts_per_ft, support, len(ratios)
 
 
+def calibrate_from_grid(lines: List[TextLine]) -> Optional[Tuple[float, int, int]]:
+    """Scale from structural GRID lines: grid bubbles (A, B, C ... along the top/bottom, 1, 2, 3 ... along the sides)
+    and the dimension chain written between them ("5'-8"" between A and B). Each dimension gives
+    points-per-foot = distance between its two grid bubbles / value; the consensus is the scale.
+    Works on architect's PDFs that have no scale note and no measurable dimension lines."""
+    letters: Dict[str, List[TextLine]] = {}
+    numbers: Dict[str, List[TextLine]] = {}
+    for ln in lines:
+        t = ln.text.strip()
+        if re.fullmatch(r"[A-Z]", t):
+            letters.setdefault(t, []).append(ln)
+        elif re.fullmatch(r"\d{1,2}", t):
+            numbers.setdefault(t, []).append(ln)
+    # a grid label appears twice on the same axis (both ends of the grid line)
+    xs = sorted(statistics.mean(l.cx for l in ls) for k, ls in letters.items()
+                if len(ls) >= 2 and max(l.cx for l in ls) - min(l.cx for l in ls) < 8)
+    ys = sorted(statistics.mean(l.cy for l in ls) for k, ls in numbers.items()
+                if len(ls) >= 2 and max(l.cy for l in ls) - min(l.cy for l in ls) < 8)
+    ratios = []
+    for ln in lines:
+        v = _single_dim_ft(ln.text)
+        if not v or v < 2:
+            continue
+        horiz = (ln.x1 - ln.x0) >= (ln.y1 - ln.y0)
+        grid, c = (xs, ln.cx) if horiz else (ys, ln.cy)
+        if len(grid) < 2:
+            continue
+        # the dimension between two grid lines has its text centred between them (any pair, for overall dims too)
+        best = None
+        for i in range(len(grid)):
+            for j in range(i + 1, len(grid)):
+                span = grid[j] - grid[i]
+                if span <= 0 or abs((grid[i] + grid[j]) / 2 - c) > 0.12 * span:
+                    continue
+                r = span / v
+                if best is None or abs(((grid[i] + grid[j]) / 2) - c) < best[0]:
+                    best = (abs(((grid[i] + grid[j]) / 2) - c), r)
+        if best:
+            ratios.append(best[1])
+    if len(ratios) < 3:
+        return None
+    best = (0, 0.0)
+    for r in ratios:
+        cluster = [x for x in ratios if abs(x - r) <= 0.03 * r]
+        if len(cluster) > best[0]:
+            best = (len(cluster), statistics.median(cluster))
+    support, pts_per_ft = best
+    if support < 3 or support < 0.4 * len(ratios) or pts_per_ft <= 0:
+        return None
+    return 1.0 / pts_per_ft, support, len(ratios)
+
+
 _AREA_LABELS = [
     ("covered_basement_sqft", r"BASEMENT"), ("covered_ground_sqft", r"GROUND"), ("covered_first_sqft", r"FIRST|1ST"),
     ("covered_second_sqft", r"SECOND|2ND"), ("covered_third_sqft", r"THIRD|3RD"), ("covered_mumty_sqft", r"MUMTY"),
@@ -939,9 +993,17 @@ def analyze_package(files: List[dict], plot_width_hint_ft: Optional[float] = Non
                             else:
                                 findings.append("Strip (load-bearing wall) foundations")
                 plan_views = [v for v in views if v.kind == "plan" and v.floor]
+                unlabelled = False
+                if not plan_views:
+                    # a plan titled without a floor ("SERVANT QUARTER (Architectural Plan)", "FLOOR PLAN"): a single-
+                    # storey building / annex - read it as the ground floor (a labelled ground floor plan still wins)
+                    loose = [v for v in views if v.kind == "plan" and not v.floor]
+                    if loose:
+                        loose[0].floor = "ground"
+                        plan_views, unlabelled = [loose[0]], True
                 for v in plan_views:
                     vlines = [ln for ln in lines if _nearest_view(views, ln.cx, ln.cy, {"plan"}) is v] if len(plan_views) > 1 else lines
-                    rank = {"plan_working": 0, "plan": 1, "plan_furniture": 2, "plan_dw": 3}.get(role, 4)
+                    rank = {"plan_working": 0, "plan": 1, "plan_furniture": 2, "plan_dw": 3}.get(role, 4) + (5 if unlabelled else 0)
                     n_dims = sum(1 for ln in vlines if _single_dim_ft(ln.text))
                     plan_candidates.setdefault(v.floor, []).append((rank, -n_dims, fi, pi_, v, vlines, parse_scale(full_text), src, len(plan_views)))
                     if role == "plan_dw":
@@ -1024,6 +1086,14 @@ def analyze_package(files: List[dict], plot_width_hint_ft: Optional[float] = Non
                 m = measure_plan(H, V, curves, cal[0])
                 if m and 300 <= m.width_ft * m.depth_ft <= 4000:
                     ff.scale_label = f"calibrated from {cal[1]} of {cal[2]} dimension lines"
+                else:
+                    m = None
+        if m is None:
+            cal = calibrate_from_grid(vlines)
+            if cal:
+                m = measure_plan(H, V, curves, cal[0])
+                if m and 150 <= m.width_ft * m.depth_ft <= 4000:
+                    ff.scale_label = f"calibrated from the grid ({cal[1]} of {cal[2]} dimensions agree)"
                 else:
                     m = None
         if m is None and (H or V):

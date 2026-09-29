@@ -1,9 +1,9 @@
 """Excel export of the construction schedule: activity table, a bar-chart Gantt grid and the delivery plan."""
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, timedelta
 from io import BytesIO
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -140,6 +140,57 @@ def build_schedule_workbook(sched: Schedule, project_name: str = "Project", deli
                     cell.fill = FLOAT_FILL
             r += 1
         g.freeze_panes = g.cell(row=5, column=len(fixed) + 1)
+
+    # ---------------- Manpower: crews per activity, trades per week
+    if acts:
+        from scheduling.productivity import TRADES
+        m = wb.create_sheet("Manpower")
+        m["A1"] = f"{project_name} - Workers needed"
+        m["A1"].font = Font(name=FONT, bold=True, size=14, color=NAVY)
+        m["A2"] = (f"Most workers on site at once: {sched.peak_workers()} - total {sched.total_worker_days():,.0f} worker-days. "
+                   "Crews per activity are those needed to meet the target date; the weekly table is the number of "
+                   "workers of each trade to have on site that week.")
+        m["A2"].font = Font(name=FONT, size=9, color="777777")
+        _hdr(m, 4, ["Trade", "Most at once", "Needed from", "Until", "Worker-days"], [30, 13, 13, 13, 13])
+        r = 5
+        for t in sched.trade_summary():
+            _cell(m, r, 1, TRADES.get(t["trade"], t["trade"]), bold=True)
+            _cell(m, r, 2, t["peak"])
+            _cell(m, r, 3, t["from"], fmt=DATE_FMT)
+            _cell(m, r, 4, t["to"], fmt=DATE_FMT)
+            _cell(m, r, 5, round(t["worker_days"]), fmt="#,##0")
+            r += 1
+        r += 2
+        _cell(m, r, 1, "Crews per activity", bold=True, color=NAVY)
+        r += 1
+        _hdr(m, r, ["Activity", "Crews", "Workers (largest part)", "Worker-days", "Start", "Finish"], [30, 13, 13, 13, 13, 13])
+        for a in acts:
+            r += 1
+            _cell(m, r, 1, a.name)
+            _cell(m, r, 2, a.gangs)
+            _cell(m, r, 3, a.workers())
+            _cell(m, r, 4, round(a.worker_days(), 1), fmt="#,##0.0")
+            _cell(m, r, 5, a.start, fmt=DATE_FMT)
+            _cell(m, r, 6, a.finish, fmt=DATE_FMT)
+        # weekly table
+        days = sched.manpower_by_day()
+        weeks: Dict[date, Dict[str, int]] = {}
+        for i, d in enumerate(days):
+            wk = sched.calendar[i] - timedelta(days=sched.calendar[i].weekday())
+            row = weeks.setdefault(wk, {})
+            for t, n in d.items():
+                row[t] = max(row.get(t, 0), n)
+        trades = [t for t in TRADES if any(t in w for w in weeks.values())]
+        wsw = wb.create_sheet("Manpower_by_week")
+        wsw["A1"] = f"{project_name} - Workers on site, week by week"
+        wsw["A1"].font = Font(name=FONT, bold=True, size=14, color=NAVY)
+        _hdr(wsw, 3, ["Week of"] + [TRADES[t] for t in trades] + ["Total"], [13] + [12] * len(trades) + [10])
+        for i, (wk, row) in enumerate(sorted(weeks.items()), 4):
+            _cell(wsw, i, 1, wk, fmt=DATE_FMT)
+            for j, t in enumerate(trades, 2):
+                _cell(wsw, i, j, row.get(t) or None)
+            _cell(wsw, i, len(trades) + 2, sum(row.values()), bold=True)
+        wsw.freeze_panes = "B4"
 
     # ---------------- Delivery plan
     if delivery_rows:

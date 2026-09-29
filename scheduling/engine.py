@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Dict, List, Optional, Tuple
 
-from scheduling.productivity import default_rate
+from scheduling.productivity import AREA_PER_CREW, CREWS, FIXED_CREWS, crew_of, default_rate
 
 WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
@@ -59,6 +59,10 @@ class ScheduleSettings:
     rate_overrides: Dict[str, float] = field(default_factory=dict)  # "TEMPLATE|WI-ID" -> output per gang-day
     gang_overrides: Dict[str, float] = field(default_factory=dict)  # template key -> gangs
     duration_overrides: Dict[str, int] = field(default_factory=dict)  # activity id -> working days
+    lag_overrides: Dict[str, int] = field(default_factory=dict)  # "SUCC|PRED" -> lag in calendar days
+    progress: Dict[str, float] = field(default_factory=dict)  # activity id -> % complete (progress tracking)
+    status_date: str = ""  # ISO date of the progress update ("" = no progress tracking)
+    site_capacity: int = 0  # most workers the plot can hold at once; >0 = resource-levelled programme
 
     def start(self) -> date:
         try:
@@ -73,12 +77,19 @@ class Component:
     description: str
     qty: float
     unit: str
-    rate: Optional[float] = None  # output per gang-day (None for lump-sum)
+    rate: Optional[float] = None  # output per crew-day (None for lump-sum)
     gang_basis: str = ""
+    crew: str = "general"  # which crew does it (scheduling.productivity.CREWS)
+    crews: float = 1.0  # crews actually deployed on this part (activity crews, capped by what can work together)
 
     @property
     def gang_days(self) -> float:
         return self.qty / self.rate if self.rate else 0.0
+
+    @property
+    def days(self) -> float:
+        """Working days for this part with the deployed crews."""
+        return self.gang_days / max(self.crews, 0.1)
 
 
 @dataclass
@@ -102,10 +113,57 @@ class Activity:
     finish: Optional[date] = None
     total_float: int = 0
     critical: bool = False
+    max_gangs: int = 1  # how many crews can work on this activity at once (site space x crew limits)
+    fixed_crew: str = ""  # crew for fixed-duration activities (mobilisation, handover)
+    area_sft: float = 0.0  # floor area the activity is spread over
+    pct_complete: float = 0.0
+    done: bool = False
 
     @property
     def gang_days(self) -> float:
         return sum(c.gang_days for c in self.components)
+
+    @property
+    def work_days(self) -> float:
+        """Working days at the deployed crews (parts done one after the other: shutter -> steel -> pour ...)."""
+        return sum(c.days for c in self.components)
+
+    def crew_plan(self) -> List[Tuple[float, Dict[str, int]]]:
+        """[(share of the activity's duration, {trade: workers})] - the parts in the order they are done."""
+        from scheduling.productivity import CREWS as _C
+        parts = [(c.days, c.crew, c.crews) for c in self.components if c.rate and c.qty > 0]
+        tot = sum(d for d, _c, _k in parts)
+        if tot <= 0:
+            crew = self.fixed_crew or (self.components[0].crew if self.components else "general")
+            comp = _C.get(crew, ({"Labourer": 2}, 1))[0]
+            return [(1.0, {t: int(n) for t, n in comp.items()})]
+        out = []
+        for d, crew, k in parts:
+            comp = _C.get(crew, ({"Labourer": 2}, 1))[0]
+            out.append((d / tot, {t: int(round(n * max(k, 1))) for t, n in comp.items()}))
+        return out
+
+    def daily_profile(self) -> List[Dict[str, int]]:
+        """Workers of each trade on each day of this activity. The parts are done one after the other
+        (e.g. shuttering -> steel -> concrete pour); each day belongs to the part in progress at mid-day."""
+        plan = self.crew_plan()
+        bounds, pos = [], 0.0
+        for share, trades in plan:
+            bounds.append((pos, pos + share * self.duration, trades))
+            pos += share * self.duration
+        out: List[Dict[str, int]] = []
+        for d in range(max(self.duration, 0)):
+            mid = d + 0.5
+            trades = next((t for lo, hi, t in bounds if lo <= mid < hi), bounds[-1][2] if bounds else {})
+            out.append(dict(trades))
+        return out
+
+    def workers(self) -> int:
+        """Largest number of workers on site at any time during this activity."""
+        return max((sum(t.values()) for _s, t in self.crew_plan()), default=0)
+
+    def worker_days(self) -> float:
+        return sum(share * self.duration * sum(t.values()) for share, t in self.crew_plan())
 
     @property
     def phase_name(self) -> str:
@@ -153,6 +211,37 @@ class Schedule:
 
     def by_id(self, aid: str) -> Optional[Activity]:
         return next((a for a in self.activities if a.id == aid), None)
+
+    def manpower_by_day(self) -> List[Dict[str, int]]:
+        """Workers of each trade on site on every working day (index = working-day number)."""
+        days = [dict() for _ in range(self.working_days)]
+        for a in self.activities:
+            for i, trades in enumerate(a.daily_profile()):
+                d = a.es + i
+                if 0 <= d < len(days):
+                    for t, n in trades.items():
+                        days[d][t] = days[d].get(t, 0) + n
+        return days
+
+    def peak_workers(self) -> int:
+        return max((sum(d.values()) for d in self.manpower_by_day()), default=0)
+
+    def total_worker_days(self) -> float:
+        return sum(sum(d.values()) for d in self.manpower_by_day())
+
+    def trade_summary(self) -> List[dict]:
+        """Per trade: most workers at once, first & last working day, total worker-days."""
+        days = self.manpower_by_day()
+        out: Dict[str, dict] = {}
+        for i, d in enumerate(days):
+            for t, n in d.items():
+                r = out.setdefault(t, {"trade": t, "peak": 0, "first": i, "last": i, "worker_days": 0})
+                r["peak"] = max(r["peak"], n)
+                r["last"] = i
+                r["worker_days"] += n
+        for r in out.values():
+            r["from"], r["to"] = self.calendar[r["first"]], self.calendar[r["last"]]
+        return sorted(out.values(), key=lambda r: (r["from"], -r["worker_days"]))
 
     def phase_spans(self) -> List[Tuple[str, date, date]]:
         out: Dict[str, List[date]] = {}
@@ -233,14 +322,28 @@ class _Builder:
                 continue
             rate, basis = default_rate(template, wi_id)
             rate = float(self.s.rate_overrides.get(f"{template}|{wi_id}", rate) or rate)
-            comps.append(Component(wi_id, w.description, qty, w.unit, rate, basis))
+            comps.append(Component(wi_id, w.description, qty, w.unit, rate, basis, crew_of(wi_id)))
         # gangs: per-activity edit, else per-activity-type edit, else default
         gangs = float(self.s.gang_overrides.get(aid, self.s.gang_overrides.get(template, DEFAULT_GANGS.get(template, 1.0)))
                       or 1.0)
         a = Activity(aid, template, name, phase, floor, comps, fixed_days, max(gangs, 0.1),
-                     [(p, lag) for p, lag in (preds or []) if p])
+                     [(p, int(self.s.lag_overrides.get(f"{aid}|{p}", lag))) for p, lag in (preds or []) if p])
+        a.fixed_crew = FIXED_CREWS.get(template, "")
+        # site space: one crew per AREA_PER_CREW sq ft of the floor(s) being worked on; crew-type limits too
+        area = self.floor_area(floor)
+        a.area_sft = area
+        space = max(1, int(area // AREA_PER_CREW.get(template, 600)))
+        caps = [CREWS.get(c.crew, ({}, 1))[1] for c in comps if c.rate]
+        a.max_gangs = max(1, min(space, max(caps) if caps else 1))
         self.acts.append(a)
         return a
+
+    def floor_area(self, floor_name: str) -> float:
+        p = self.project
+        for f in p.floors:
+            if f.name == floor_name:
+                return float(f.covered_sft or 0)
+        return float(sum(f.covered_sft for f in p.floors) or 0)
 
 
 def _weights(items: List[Tuple[str, float]]) -> Dict[str, float]:
@@ -410,14 +513,20 @@ def _network(res, s: ScheduleSettings) -> List[Activity]:
 def _compute_durations(acts: List[Activity], s: ScheduleSettings) -> None:
     prod = max(float(s.productivity_pct or 100.0), 10.0) / 100.0
     for a in acts:
+        # each part gets the activity's crews, but never more than can work on that part together
+        for c in a.components:
+            c.crews = max(1.0, min(float(a.gangs), float(CREWS.get(c.crew, ({}, 1))[1]))) if a.gangs >= 1 else a.gangs
         ov = s.duration_overrides.get(a.id)
         if ov is not None and int(ov) > 0:
             a.duration, a.overridden = int(ov), True
-            continue
-        gd = a.gang_days / max(a.gangs, 0.1) / prod
-        a.duration = max(int(math.ceil(gd - 1e-6)), a.fixed_days) if (gd > 0 or a.fixed_days) else 0
-        if gd > 0:
-            a.duration = max(a.duration, 1)
+        else:
+            gd = a.work_days / prod
+            a.duration = max(int(math.ceil(gd - 1e-6)), a.fixed_days) if (gd > 0 or a.fixed_days) else 0
+            if gd > 0:
+                a.duration = max(a.duration, 1)
+        pct = float(s.progress.get(a.id, 0) or 0)
+        a.pct_complete = min(max(pct, 0.0), 100.0)
+        a.done = a.pct_complete >= 100.0
 
 
 def _prune(acts: List[Activity]) -> List[Activity]:
@@ -474,7 +583,7 @@ def _topo(acts: List[Activity]) -> List[Activity]:
     return out
 
 
-def _cpm(acts: List[Activity], cal: WorkCalendar) -> None:
+def _cpm(acts: List[Activity], cal: WorkCalendar, status_idx: Optional[int] = None, cap: int = 0) -> None:
     order = _topo(acts)
     by = {a.id: a for a in acts}
     D = cal.dates
@@ -483,7 +592,17 @@ def _cpm(acts: List[Activity], cal: WorkCalendar) -> None:
         for pid, lag in a.preds:
             p = by[pid]
             es = max(es, cal.first_on_or_after(D[p.ef] + timedelta(days=1 + lag)) if p.duration else p.es)
+        if status_idx is not None and a.duration:
+            if a.done:  # finished: shown ending just before the status date
+                es = max(0, min(es, status_idx - a.duration))
+            else:  # remaining work can only happen from the status date on
+                remaining = int(math.ceil(a.duration * (1 - a.pct_complete / 100.0)))
+                es = max(es, status_idx)
+                if a.pct_complete > 0:
+                    a.duration = max(remaining, 1)
         a.es, a.ef = es, es + a.duration - 1
+    if cap and cap > 0:
+        _level(acts, order, by, cal, cap, status_idx)
     end = max(a.ef for a in acts)
     succs: Dict[str, List[Tuple[str, int]]] = {a.id: [] for a in acts}
     for a in acts:
@@ -507,10 +626,45 @@ def _cpm(acts: List[Activity], cal: WorkCalendar) -> None:
         if a.critical:
             continue
         a.critical, a.total_float = True, 0
+        drivers = [by[pid] for pid, lag in a.preds
+                   if by[pid].duration and cal.first_on_or_after(D[by[pid].ef] + timedelta(days=1 + lag)) == a.es]
+        if not drivers and cap and a.es > 0:
+            # started late for lack of room on site: the work occupying the site just before it drives it
+            drivers = [b for b in acts if b.duration and b.ef == a.es - 1]
+        stack.extend(drivers)
+
+
+def _level(acts: List[Activity], order: List[Activity], by: Dict[str, Activity], cal: WorkCalendar, cap: int,
+           status_idx: Optional[int]) -> None:
+    """Resource levelling (serial schedule generation): activities are placed in priority order (earliest start,
+    least float) at the first day where their predecessors are finished AND the site has room for their workers."""
+    D = cal.dates
+    usage: List[int] = [0] * (len(D) + 1)
+    placed: set = set()
+    prio = {a.id: (a.es, i) for i, a in enumerate(order)}
+    remaining = list(order)
+    while remaining:
+        ready = [a for a in remaining if all(pid in placed for pid, _ in a.preds)]
+        a = min(ready, key=lambda x: prio[x.id])
+        remaining.remove(a)
+        placed.add(a.id)
+        if not a.duration:
+            continue
+        es = 0
         for pid, lag in a.preds:
             p = by[pid]
-            if cal.first_on_or_after(D[p.ef] + timedelta(days=1 + lag)) == a.es:
-                stack.append(p)
+            es = max(es, cal.first_on_or_after(D[p.ef] + timedelta(days=1 + lag)) if p.duration else p.es)
+        if status_idx is not None:
+            es = max(0, min(es, status_idx - a.duration)) if a.done else max(es, status_idx)
+        prof = [sum(d.values()) for d in a.daily_profile()]
+        limit = max(cap, max(prof, default=0))  # a job bigger than the limit still has to happen
+        t = es
+        while t + len(prof) < len(usage) and any(usage[t + i] + n > limit for i, n in enumerate(prof)):
+            t += 1
+        a.es, a.ef = t, t + a.duration - 1
+        for i, n in enumerate(prof):
+            if t + i < len(usage):
+                usage[t + i] += n
 
 
 def build_schedule(res, settings: Optional[ScheduleSettings] = None) -> Schedule:
@@ -520,7 +674,13 @@ def build_schedule(res, settings: Optional[ScheduleSettings] = None) -> Schedule
     acts = _prune(acts)
     cal = WorkCalendar(s.start(), s.work_weekdays, s.holidays)
     if acts:
-        _cpm(acts, cal)
+        status_idx = None
+        if s.status_date and s.progress:
+            try:
+                status_idx = cal.first_on_or_after(date.fromisoformat(s.status_date))
+            except ValueError:
+                status_idx = None
+        _cpm(acts, cal, status_idx, int(s.site_capacity or 0))
         acts.sort(key=lambda a: (a.es, a.ef, a.phase))
     return Schedule(acts, s, cal.dates)
 
