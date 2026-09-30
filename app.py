@@ -75,6 +75,9 @@ elif step == 5:
     from ui.steps.schedule import step_schedule  # construction schedule & Gantt chart (scheduling/)
     step_schedule()
 elif step == 6:
+    from ui.steps.cost import step_cost  # cost & cash flow (pricing/)
+    step_cost()
+elif step == 7:
     from ui.steps.export import step_5
     step_5()
 else:

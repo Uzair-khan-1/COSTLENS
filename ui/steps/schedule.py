@@ -30,6 +30,6 @@ def step_schedule():
             go_to_step(4)
             st.rerun()
     with c2:
-        if st.button("Next: download & share →", type="primary", width="stretch", key="sched_next_6"):
+        if st.button("Next: what will it cost? →", type="primary", width="stretch", key="sched_next_6"):
             go_to_step(6)
             st.rerun()

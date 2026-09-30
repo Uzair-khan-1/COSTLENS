@@ -1,4 +1,4 @@
-# CostLens — *From plans to materials.* (v0.11.0)
+# CostLens — *From plans to materials.* (v0.12.0)
 
 A drawing-based **Material Take-Off (MTO)** tool for 5-10 marla houses in
 Pakistan. Upload the complete drawing set (CAD-exported PDFs work best); the
@@ -571,6 +571,27 @@ lines). See **[DETAILED_MTO.md](DETAILED_MTO.md)**.
 ---
 
 ## 8. Changelog
+
+**v0.12.0 — Cost & cash flow (Pakistan)**
+- New **Step 6 · What will it cost?** (Download moves to Step 7). City: Islamabad, Rawalpindi, Lahore, Karachi,
+  Peshawar, Quetta (Faisalabad/Multan use Lahore). Contract type: labour contract (owner buys materials), grey
+  structure contract, or turnkey. Total with a low-high range, cost per sq ft of covered area, materials vs labour,
+  paid to contractor vs bought yourself, grey structure vs finishing, cost by trade.
+- **Money needed each month** from the schedule (materials bought when first needed, labour as work is done) with
+  price rise per month (default 1%), contractor profit (10%), contingency (5%) and optional extras (cartage, approvals,
+  utility connections, design fees, soil test) - all editable.
+- **Rates with provenance** (`pricing/`): indicative Sep-2026 rate book for all 309 materials and labour rates for all
+  101 BOQ items, city factors; every rate shows status (live / your quote / indicative), date and source.
+- **Price agent** (`pricing/agent.py`, `scripts/update_prices.py`, `.github/workflows/update-prices.yml`): weekly web
+  search for 13 fast-changing materials per city; prices must be quoted from the page, units converted, sanity-checked
+  and cross-checked; changes under 5% from trusted sources are auto-approved, the rest wait on the password-protected
+  admin page (set `ADMIN_PASSWORD`), which also has "refresh now" and MRS import.
+- **Government estimate** (optional, for PC-Is): Punjab MRS Rawalpindi 2nd Bi-Annual 2024 imported from the Finance
+  Department PDF (`pricing/mrs.py`, 3,830 rates) and updated to today (labour +20%, materials by a market basket);
+  Balochistan CSR-2026 rates from real estimates for Quetta; BST 4%, consultancy 1%, contingency 1%.
+- **Quote reader**: upload or paste a supplier's quotation / bill; items are matched to the project's materials,
+  units converted (bag, ton, maund, 1000 bricks, coil, sqm ...), confirmed by the owner and used as "your quote".
+- Downloads: cost workbook (formulas: qty x rate) and one-page cost PDF; lakh/crore in the app.
 
 **v0.11.0 — "When can I move in?": target-driven schedule with real manpower**
 - The owner picks a target (4-12 months); the planner (`scheduling/planner.py`) builds the programme from the

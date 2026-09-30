@@ -126,6 +126,14 @@ def _sched_in(d: Optional[dict]):
     return ScheduleSettings(**{k: v for k, v in d.items() if k in allowed})
 
 
+def _cost_in(d: Optional[dict]):
+    if not d:
+        return None
+    from pricing.costing import CostSettings
+    allowed = {x.name for x in fields(CostSettings)}
+    return CostSettings(**{k: v for k, v in d.items() if k in allowed})
+
+
 def _baseline_out(b: Optional[dict]) -> Optional[dict]:
     if not b:
         return None
@@ -190,6 +198,7 @@ def project_to_dict(ss: Dict[str, Any], include_drawings: bool = False) -> dict:
         "sched_settings": _dc(ss.get("sched_settings")) if ss.get("sched_settings") is not None else None,
         "sched_target": ss.get("sched_target"),
         "sched_baseline": _baseline_out(ss.get("sched_baseline")),
+        "cost_settings": _dc(ss.get("cost_settings")) if ss.get("cost_settings") is not None else None,
         "drawings": None,
     }
     if include_drawings and ss.get("uploaded_files"):
@@ -244,6 +253,7 @@ def project_from_json(raw: bytes) -> Dict[str, Any]:
         "sched_settings": _sched_in(d.get("sched_settings")),
         "sched_target": d.get("sched_target"),
         "sched_baseline": _baseline_in(d.get("sched_baseline")),
+        "cost_settings": _cost_in(d.get("cost_settings")),
         "step": min(int(d.get("step", 1)), 4 if has_params else 1), "max_step": int(d.get("max_step", 1)) if has_params else 1,
         "dmto_result": None,
     }

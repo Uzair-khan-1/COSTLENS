@@ -10,7 +10,8 @@ STEP_TITLES = {
     3: ("Your scope & details", "کام کی تفصیل اور ضروری معلومات"),
     4: ("Materials & Bill of Quantities", "سامان کی فہرست اور BOQ"),
     5: ("When can I move in? Schedule & workers", "گھر کب تیار ہوگا؟ شیڈول اور مزدور"),
-    6: ("Download & share", "ڈاؤن لوڈ اور شیئر کریں"),
+    6: ("What will it cost? Cost & cash flow", "کتنا خرچ آئے گا؟ لاگت اور ماہانہ رقم"),
+    7: ("Download & share", "ڈاؤن لوڈ اور شیئر کریں"),
 }
 STEP_TITLE_SKETCH_2 = ("Your requirements", "آپ کی ضروریات")
 
@@ -34,7 +35,11 @@ TIPS = {
          "If your target is too fast, it tells you why and shows the fastest realistic plan.",
          "Engineers: switch on Engineer mode for crews, dependencies, productivity, critical path and progress tracking."],
         "کب تک گھر تیار چاہیے؟ مہینے چنیں - باقی حساب ایپ کرے گی"),
-    6: (["Excel for your contractor, PDF or WhatsApp for your suppliers.",
+    6: (["Pick your city and how you'll build (labour contract, grey structure or turnkey).",
+         "See the total, cost per sq ft and how much money you need each month.",
+         "Type your suppliers' prices or upload their quotation - the estimate updates."],
+        "شہر اور ٹھیکے کی قسم چنیں - کل لاگت اور ہر ماہ درکار رقم دیکھیں"),
+    7: (["Excel for your contractor, PDF or WhatsApp for your suppliers.",
          "Save the project file to continue later."],
         "ٹھیکیدار کے لیے ایکسل، دکاندار کے لیے PDF یا واٹس ایپ"),
 }

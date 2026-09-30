@@ -15,7 +15,7 @@ from ui.state import go_to_step, reset_project
 # ---------------------------------------------------------------------------
 def step_5():
     from ui.guide import section, step_header
-    step_header(6)
+    step_header(7)
     pi: ProjectInputs = st.session_state["project_inputs"]
     res = mto_views.ensure_current_result(pi, st.session_state.get("extracted_params"))
     if res is None:
@@ -65,10 +65,27 @@ def step_5():
                 "dmto_overrides", "dmto_floors", "package_facts", "dmto_scan", "uploaded_signature", "drawing_filled",
                 "brief", "copilot_scenarios", "copilot_msgs", "uploaded_files", "step", "max_step",
                     "scope_sel", "scope_confirmed", "spec_answers", "assumptions_ack", "plot_dims_user",
-                    "sched_settings", "sched_target", "sched_baseline")
+                    "sched_settings", "sched_target", "sched_baseline", "cost_settings")
         snap = {k: st.session_state.get(k) for k in keys}
         st.download_button("\u2b07\ufe0f Project file", data=lambda: project_to_json(snap, False), file_name=f"{name}.costlens.json",
                            mime="application/json", width="stretch")
+
+    with st.container(border=True):
+        b1, b2, b3 = st.columns([2, 1, 1])
+        b1.markdown("<div style='font-size:28px;display:inline'>\U0001f4b0</div> <b>For your budget</b> - cost estimate with "
+                    "rates, cost per sq ft and money needed each month (Step 6).", unsafe_allow_html=True)
+        try:
+            from ui.cost_views import current_cost, government
+            from pricing.export import build_cost_workbook, cost_pdf
+            cost, _s = current_cost(res)
+            gov, _uf = government(res, cost)
+            b2.download_button("\u2b07\ufe0f Cost (Excel)", data=lambda: build_cost_workbook(cost, name, gov),
+                               file_name=f"{name}_Cost_Estimate.xlsx", width="stretch", key="exp_cost_xlsx",
+                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            b3.download_button("\u2b07\ufe0f Cost (PDF)", data=lambda: cost_pdf(cost, name, gov), file_name=f"{name}_Cost_Summary.pdf",
+                               mime="application/pdf", width="stretch", key="exp_cost_pdf")
+        except Exception as exc:  # noqa: BLE001 - never block the downloads page
+            b2.caption(f"Cost not available: {exc}")
 
     with st.expander("\U0001f440 Preview the shopping list text"):
         st.code(text, language=None)
@@ -77,8 +94,8 @@ def step_5():
                f"\u26a0\ufe0f {config.DISCLAIMER_TEXT_SHORT}")
     b1, b2 = st.columns(2)
     with b1:
-        if st.button("\u2190 Back to materials"):
-            go_to_step(4)
+        if st.button("\u2190 Back to cost"):
+            go_to_step(6)
             st.rerun()
     with b2:
         if st.button("\U0001f504 Start a new house", width="stretch"):

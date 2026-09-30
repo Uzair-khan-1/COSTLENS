@@ -146,3 +146,20 @@ proposal validated by the input checks and applied only by the user (with an und
 are compact so free-tier requests stay small. Tests (`tests/test_copilot.py`) use a scripted fake LLM client
 to cover tool calls, bad arguments, unknown tools, step limits and API failures. The model is set in
 `config.GROQ_TOOL_MODEL` (fallback `llama-3.3-70b-versatile`).
+
+
+## Costing (pricing/)
+
+```
+pricing/base_rates.py  indicative rates (all materials, Sep 2026) + labour per BOQ item + city factors + live-item specs
+pricing/ratebook.py    city rate book with provenance: user quote > live (approved) > indicative; pending & history
+pricing/agent.py       weekly price agent: search -> read -> extract (AI or rules) -> verify -> decide
+pricing/mrs.py         Punjab MRS PDF importer (column-aware), saved to data/rates/mrs_<district>_<edition>.json
+pricing/government.py  government estimate: MRS mapping per work item, update to today, Balochistan CSR-2026 anchors
+pricing/costing.py     market cost, contract types, extras, contingency, range, cash flow + escalation from the schedule
+pricing/quotes.py      supplier quote reader (PDF / photo / Excel / text) with unit conversion and matching
+pricing/export.py      cost workbook (formulas) and one-page PDF
+ui/cost_views.py       Step 6 UI (owner view, rates editors, quote reader, government estimate, admin)
+```
+Data files in `data/rates/` are committed so every deployment shares the same approved rates; the GitHub Action
+updates them weekly.

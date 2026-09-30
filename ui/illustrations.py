@@ -63,7 +63,8 @@ def card_idea() -> str:
 # ---------------------------------------------------------------------------
 def how_it_works() -> str:
     steps = [("Your project", "drawings & city", "plot"), ("Your design", "we read it", "doc"),
-             ("Your scope", "what you want", "check"), ("Materials & BOQ", "what to buy", "list"), ("Download", "Excel, PDF, WhatsApp", "down")]
+             ("Your scope", "what you want", "check"), ("Materials & BOQ", "what to buy", "list"),
+             ("Time & cost", "schedule & cash flow", "check"), ("Download", "Excel, PDF, WhatsApp", "down")]
     icons = {
         "plot": '<rect x="-16" y="-12" width="32" height="24" fill="#E6F4E1" stroke="{c}" stroke-width="2"/><rect x="-9" y="-6" width="14" height="12" fill="{c}"/>',
         "doc": '<rect x="-12" y="-15" width="24" height="30" rx="2" fill="white" stroke="{c}" stroke-width="2"/><path d="M-7 -6 H7 M-7 0 H7 M-7 6 H3" stroke="{c}" stroke-width="2"/>',
@@ -74,15 +75,15 @@ def how_it_works() -> str:
     parts = []
     n = len(steps)
     for i, (t, sub, ic) in enumerate(steps):
-        x = 60 + i * 150
+        x = 55 + i * 122
         parts.append(f'<g transform="translate({x},40)"><circle r="28" fill="{SKY}"/>{icons[ic].format(c=NAVY)}</g>')
         parts.append(f'<circle cx="{x + 20}" cy="18" r="10" fill="{GOLD}"/><text x="{x + 20}" y="22" font-size="11" '
                      f'font-weight="bold" text-anchor="middle" fill="{NAVY}">{i + 1}</text>')
         parts.append(f'<text x="{x}" y="86" font-size="13" font-weight="bold" text-anchor="middle" fill="{NAVY}">{escape(t)}</text>')
         parts.append(f'<text x="{x}" y="102" font-size="11" text-anchor="middle" fill="#64748B">{escape(sub)}</text>')
         if i < n - 1:
-            parts.append(f'<path d="M{x + 36} 40 H{x + 112}" stroke="{GREY}" stroke-width="2" stroke-dasharray="4 4"/>'
-                         f'<polygon points="{x + 112},35 {x + 120},40 {x + 112},45" fill="{GREY}"/>')
+            parts.append(f'<path d="M{x + 34} 40 H{x + 84}" stroke="{GREY}" stroke-width="2" stroke-dasharray="4 4"/>'
+                         f'<polygon points="{x + 84},35 {x + 91},40 {x + 84},45" fill="{GREY}"/>')
     return _svg(720, 112, "".join(parts), 760)
 
 
