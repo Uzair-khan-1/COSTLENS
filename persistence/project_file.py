@@ -194,6 +194,8 @@ def project_to_dict(ss: Dict[str, Any], include_drawings: bool = False) -> dict:
         "spec_answers": {k: (list(v) if isinstance(v, tuple) else v) for k, v in (ss.get("spec_answers") or {}).items()},
         "assumptions_ack": ss.get("assumptions_ack") or "",
         "plot_dims_user": list(ss.get("plot_dims_user")) if ss.get("plot_dims_user") else None,
+        "spec_custom": dict(ss.get("spec_custom") or {}), "spec_suggested": sorted(ss.get("spec_suggested") or []),
+        "scope_not_needed": sorted(ss.get("scope_not_needed") or []),
         # schedule: calendar/crew/rate/lag/progress settings, target months, saved baseline
         "sched_settings": _dc(ss.get("sched_settings")) if ss.get("sched_settings") is not None else None,
         "sched_target": ss.get("sched_target"),
@@ -250,6 +252,8 @@ def project_from_json(raw: bytes) -> Dict[str, Any]:
         "spec_answers": {k: (tuple(v) if isinstance(v, list) else v) for k, v in (d.get("spec_answers") or {}).items()},
         "assumptions_ack": d.get("assumptions_ack") or "",
         "plot_dims_user": tuple(d["plot_dims_user"]) if d.get("plot_dims_user") else None,
+        "spec_custom": dict(d.get("spec_custom") or {}), "spec_suggested": list(d.get("spec_suggested") or []),
+        "scope_not_needed": list(d.get("scope_not_needed") or []),
         "sched_settings": _sched_in(d.get("sched_settings")),
         "sched_target": d.get("sched_target"),
         "sched_baseline": _baseline_in(d.get("sched_baseline")),

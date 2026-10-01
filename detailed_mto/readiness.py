@@ -57,7 +57,7 @@ def _is_known(prm) -> bool:
 
 
 def evaluate(p: DetailedProject, selected: set, answers: Dict[str, object], scope_confirmed: bool,
-             settings_window: Optional[tuple] = None) -> Readiness:
+             settings_window: Optional[tuple] = None, suggested: Optional[set] = None) -> Readiness:
     r = Readiness()
 
     # ---- plot
@@ -97,6 +97,13 @@ def evaluate(p: DetailedProject, selected: set, answers: Dict[str, object], scop
         if q.id not in answers or answers[q.id] is None:
             if q.required:
                 r.missing.append(Check(q.id, q.title, q.question, "details"))
+
+    # ---- pre-selected (most common) answers the owner kept - listed so nothing is assumed silently
+    kept = [q.title for q in active_questions(selected) if suggested and q.id in suggested and q.id in answers]
+    if kept:
+        r.assumptions.append(Check("suggested", "Suggested answers you kept",
+                                   f"{len(kept)} question(s) still have the most common answer we pre-selected: "
+                                   + ", ".join(kept[:12]) + ("..." if len(kept) > 12 else "") + ". Change them in part 2 if different."))
 
     # ---- doors & windows present when in scope
     if "doors" in selected and not p.doors():

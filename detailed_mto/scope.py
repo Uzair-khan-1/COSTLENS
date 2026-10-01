@@ -139,6 +139,21 @@ class Question:
     found: Optional[Callable[[DetailedProject], Optional[object]]] = None  # value read from the drawings
     help: str = ""
     required: bool = True
+    default_index: int = 0  # the most common answer - pre-selected, the owner can change it
+    custom: Optional["Custom"] = None  # lets the owner type a number instead of picking an option
+
+
+@dataclass
+class Custom:
+    """'Type my own number' for a question: prompt, unit, limits, and conversion to/from the stored value."""
+    prompt: str
+    unit: str
+    min: float
+    max: float
+    step: float
+    default: float
+    to_value: Callable[[float], object]
+    from_value: Callable[[object], float]
 
 
 def _c(p: DetailedProject) -> dict:
@@ -356,6 +371,43 @@ QUESTIONS: List[Question] = [
     Question("paving_area", "paving", "\U0001f697", "Paving", "Which outside areas get tiles or pavers?", _paving_opts, _param_effect("PAVING_AREA")),
 ]
 QUESTIONS_BY_ID = {q.id: q for q in QUESTIONS}
+
+# ---- the most common answer for each question (pre-selected; index into its options)
+DEFAULTS = {"structure": 0, "floor_h": 0, "walls": 0, "roof": 0, "sewer": 0, "neighbours": 0, "floor_type": 0, "bath_tiles": 0,
+            "kit_tiles": 0, "door_type": 0, "door_count": 0, "win_type": 0, "win_size": 1, "wc_type": 0, "geysers": 0,
+            "counter": 1, "countertop": 0, "wardrobes": 0, "lights": 1, "sockets": 1, "fans": 0, "acs": 0, "ac_units": 0,
+            "lowvolt_n": 0, "ug_tank": 1, "oh_tank": 0, "gas_src": 0, "boundary_len": 0, "cladding_area": 0, "paving_area": 0}
+_GAL_PER_CFT = 6.229  # imperial gallons per cubic foot (Pakistani tanks are sold in gallons)
+CUSTOM = {
+    "floor_h": Custom("Room height (floor to ceiling)", "ft", 8.0, 16.0, 0.5, 10.5, lambda v: round(v + 1.0, 2),
+                      lambda v: round(float(v) - 1.0, 2)),  # + slab & floor finish = floor-to-floor
+    "geysers": Custom("Number of geysers", "Nos", 0, 10, 1, 2, float, float),
+    "counter": Custom("Total counter length", "ft", 4, 60, 1, 14, float, float),
+    "wardrobes": Custom("Number of wardrobes (about 8 ft x 6 ft each)", "Nos", 0, 12, 1, 3, lambda v: 48.0 * v,
+                        lambda v: round(float(v) / 48.0)),
+    "lights": Custom("Number of light points", "Nos", 4, 300, 1, 50, float, float),
+    "sockets": Custom("Number of plug sockets", "Nos", 4, 200, 1, 40, float, float),
+    "fans": Custom("Number of ceiling fans", "Nos", 0, 30, 1, 8, float, float),
+    "acs": Custom("Number of split ACs", "Nos", 0, 20, 1, 5, float, float),
+    "lowvolt_n": Custom("Number of TV / internet points", "Nos", 0, 40, 1, 8, float, float),
+    "ug_tank": Custom("Underground tank size", "gallons", 200, 5000, 50, 1000,
+                      lambda g: round((g / _GAL_PER_CFT / 5.0) ** 0.5, 2),  # square tank, 5 ft deep
+                      lambda side: round(float(side) ** 2 * 5.0 * _GAL_PER_CFT / 50) * 50),
+    "boundary_len": Custom("Boundary wall length", "ft", 0, 600, 1, 30, float, float),
+    "paving_area": Custom("Paved area", "sq ft", 0, 5000, 10, 200, float, float),
+    "cladding_area": Custom("Cladding area", "sq ft", 0, 3000, 10, 150, float, float),
+}
+for _q in QUESTIONS:
+    _q.default_index = DEFAULTS.get(_q.id, 0)
+    _q.custom = CUSTOM.get(_q.id)
+
+
+def default_answer(q: "Question", p: DetailedProject):
+    """The pre-selected (most common) value for a question in this house."""
+    opts = q.options(p)
+    if not opts:
+        return None
+    return opts[min(q.default_index, len(opts) - 1)][1]
 
 
 # ---------------------------------------------------------------------------
