@@ -7,7 +7,7 @@ from __future__ import annotations
 from html import escape
 from typing import List, Optional, Tuple
 
-NAVY, TEAL, GOLD, SKY, SAND, GREY = "#0B1E3D", "#0D9488", "#FBBF24", "#DCEBFA", "#F5E6C8", "#94A3B8"
+NAVY, TEAL, GOLD, SKY, SAND, GREY = "#1B2F5B", "#2E86DE", "#F4B023", "#DCEBFA", "#F5E6C8", "#94A3B8"
 
 
 def _svg(w: int, h: int, body: str, max_w: Optional[int] = None, panel: bool = True) -> str:

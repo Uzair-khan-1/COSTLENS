@@ -87,59 +87,113 @@ def render_scope_picker() -> None:
                                                    else "Press 'Confirm my scope' when the ticks are right."))
 
 
+NOT_NEEDED = "\U0001f6ab Not needed in my house"
+
+
+def _primary_question_ids() -> dict:
+    """The first question of each optional scope item gets a 'Not needed' answer (it removes the item)."""
+    from detailed_mto.scope import QUESTIONS
+    keep = {"wiring", "fixtures"}  # every house is wired; fans already have "No ceiling fans"
+    out = {}
+    for q in QUESTIONS:
+        if q.scope != "core" and q.scope not in keep and q.scope not in out.values():
+            out[q.id] = q.scope
+    return out
+
+
 def render_detail_questions(p) -> None:
-    """Plain questions for the ticked items; values found on the drawings are pre-filled (marked)."""
+    """Plain questions for the ticked items. Unanswered questions come first (one block, highlighted) so none is
+    missed; answered ones and the ones read from the drawings are folded away and can be changed any time.
+    Optional items can be answered 'Not needed' - that removes them from the materials and the cost."""
+    from detailed_mto.scope import ITEMS
     sel = set(st.session_state.get("scope_sel") or ())
     qs = active_questions(sel)
     answers = _answers()
-    need = [q for q in qs if q.id not in answers and not (q.found and q.found(p) is not None)]
-    section("2\ufe0f\u20e3 A few details we need",
-            f"{len(qs) - len(need)} of {len(qs)} answered. Items marked \U0001f4d0 were read from your drawings - change them only if wrong.")
+    primary = _primary_question_ids()
     ver = st.session_state.get("spec_ver", 0)
-    changed = False
+    removed = st.session_state.pop("scope_removed_msg", None)
 
-    def card(q, col) -> bool:
-        opts = q.options(p)
+    def is_found(q):
+        return q.found is not None and q.found(p) is not None
+
+    todo = [q for q in qs if q.id not in answers and not is_found(q)]
+    done = [q for q in qs if q.id in answers]
+    from_drawings = [q for q in qs if q.id not in answers and is_found(q)]
+    total = len(qs)
+    section("2\ufe0f\u20e3 A few details we need",
+            "Answer the questions below - they decide which materials and how much. Nothing is assumed.")
+    st.progress((total - len(todo)) / max(total, 1), text=f"{total - len(todo)} of {total} answered")
+    if removed:
+        st.success(removed)
+
+    def card(q, col, highlight: bool) -> object:
+        opts = list(q.options(p))
+        if q.id in primary:
+            opts.append((NOT_NEEDED, "__not_needed__"))
         if not opts:
-            return False
+            return None
         labels = [lbl for lbl, _v in opts]
         found = q.found(p) if q.found else None
         cur = answers.get(q.id, found)
         idx = next((k for k, (_l, v) in enumerate(opts) if v == cur or (isinstance(v, float) and isinstance(cur, (int, float))
                                                                         and abs(v - float(cur)) < 1e-6)), None)
         with col.container(border=True):
-            tag = ("\U0001f4d0 from your drawings" if (found is not None and q.id not in answers) else
-                   ("\u2714\ufe0f answered" if q.id in answers else "\u2b55 needed"))
+            tag = ("<span style='color:#C2410C;font-weight:700'>\u2b55 please answer</span>" if highlight else
+                   ("\U0001f4d0 from your drawings" if (found is not None and q.id not in answers) else "\u2714\ufe0f answered"))
             st.markdown(f"<div style='font-size:16px;font-weight:700'>{q.icon} {q.title} "
-                        f"<span style='float:right;font-size:12px;font-weight:500;opacity:.8'>{tag}</span></div>"
+                        f"<span style='float:right;font-size:12px;font-weight:500'>{tag}</span></div>"
                         f"<div style='margin:2px 0 4px 0'>{q.question}</div>", unsafe_allow_html=True)
-            if found is not None and idx is None and q.id not in answers:
-                st.caption("\U0001f4d0 Read from your drawings - no answer needed. Pick an option only to replace it.")
             pick = st.radio(q.question, labels, index=idx, key=f"q_{q.id}_{ver}", label_visibility="collapsed")
             if q.help:
                 st.caption("\u2139\ufe0f " + q.help)
-            if pick is not None:
-                val = dict(opts)[pick]
-                if found is not None and val == found and q.id not in answers:
-                    return False  # still the drawing value - nothing to store
-                if answers.get(q.id) != val:
-                    answers[q.id] = val
-                    return True
-        return False
+        if pick is None:
+            return None
+        val = dict(opts)[pick]
+        if found is not None and val == found and q.id not in answers:
+            return None
+        return val
 
-    from_drawings = [q for q in qs if q.id not in answers and q.found and q.found(p) is not None]
-    main = [q for q in qs if q not in from_drawings]
-    cols = st.columns(2)
-    for i, q in enumerate(main):
-        changed = card(q, cols[i % 2]) or changed
+    changes = {}
+    if todo:
+        st.markdown(f"<div style='margin:6px 0 4px 0;font-weight:700;color:#C2410C'>\u2b55 Still to answer ({len(todo)}) - "
+                    "pick one option in each box</div>", unsafe_allow_html=True)
+        cols = st.columns(2)
+        for i, q in enumerate(todo):
+            v = card(q, cols[i % 2], True)
+            if v is not None:
+                changes[q.id] = v
+    else:
+        st.success("\u2705 All questions answered. You can change any answer below.")
+    if done:
+        with st.expander(f"\u2714\ufe0f Your answers ({len(done)}) - open to change"):
+            cols = st.columns(2)
+            for i, q in enumerate(done):
+                v = card(q, cols[i % 2], False)
+                if v is not None and v != answers.get(q.id):
+                    changes[q.id] = v
     if from_drawings:
         with st.expander(f"\U0001f4d0 Already filled in from your drawings ({len(from_drawings)}) - open only to check or change"):
-            dcols = st.columns(2)
+            cols = st.columns(2)
             for i, q in enumerate(from_drawings):
-                changed = card(q, dcols[i % 2]) or changed
-    if changed:
-        st.session_state["spec_answers"] = answers
-        st.rerun()
+                v = card(q, cols[i % 2], False)
+                if v is not None:
+                    changes[q.id] = v
+    if not changes:
+        return
+    for qid, v in changes.items():
+        if v == "__not_needed__":  # remove the item from the scope -> gone from materials, BOQ, cost and schedule
+            scope_key = primary[qid]
+            st.session_state["scope_sel"] = sorted(set(st.session_state.get("scope_sel") or ()) - {scope_key})
+            st.session_state["scope_ver"] = st.session_state.get("scope_ver", 0) + 1  # tick boxes follow the change
+            label = ITEMS[scope_key].label if scope_key in ITEMS else scope_key
+            st.session_state["scope_removed_msg"] = (f"\U0001f6ab **{label}** removed from your house - it is no longer in the "
+                                                     "materials, BOQ, cost or schedule. Tick it again in part 1 to add it back.")
+            answers.pop(qid, None)
+        else:
+            answers[qid] = v
+    st.session_state["spec_answers"] = answers
+    st.session_state["spec_ver"] = ver + 1
+    st.rerun()
 
 
 def render_assumptions(r: Readiness) -> None:

@@ -278,7 +278,7 @@ def render_copilot(res) -> None:
     has_key = keys_from_mapping(st.session_state).any()
     st.caption(("\U0001f916 AI copilot (free models): ask in your own words, English or Urdu. " if has_key else
                 "\U0001f916 Built-in copilot (no AI key): use the buttons or short requests like *what if block walls?*. "
-                "Add a free Groq key in the sidebar to ask anything and edit rooms by chat. ")
+                "The AI is not set up yet (keys in Streamlit secrets) - only built-in answers are available. ")
                + "It only uses the take-off engine for numbers and never changes anything until you press **Apply**.")
     cols = st.columns(3)
     for i, (label, text) in enumerate(QUICK):

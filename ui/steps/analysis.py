@@ -288,12 +288,11 @@ def step_2():
                          "we used the safer value"):
             for c in facts.conflicts:
                 st.markdown("\u2022 " + c)
-    with st.expander("\U0001f9e0 Optional: ask the AI to read the drawings too"):
+    with st.expander("\U0001f9e0 Tell the AI anything special about this house (optional)"):
         project_context = st.text_area(
-            "Anything the AI should know? (optional)",
+            "Anything the AI should know?",
             placeholder="e.g. 'This is a G+1 house, footings are isolated RCC pad footings, drawing is not to exact scale...'",
         )
-        st.caption("Needs a free AI key in the sidebar. Press 'Also ask the AI to fill gaps' below.")
     # Wall material/thickness are rarely labelled on a simple line drawing;
     # pass the Step 1 choice as a prior the AI uses unless the drawing
     # clearly shows otherwise (see ai/prompts.py rules 1-3).
@@ -310,22 +309,31 @@ def step_2():
 
     _readable = facts.has_facts() and any(f.rooms for k, f in facts.floors.items() if k != "roof")
     plot_ok = _render_plot_check(facts, pi) if _readable else False
-    c1, c2 = st.columns(2)
-    with c1:
-        if _readable:
-            skip_clicked = st.button("\u2705 Looks right - continue \u2192", type="primary", width="stretch", disabled=not plot_ok,
-                                     help="Everything read from the drawings is used; in the next step you choose what you want "
-                                          "in the house and we ask only for what is missing.")
+    ai_ready = keys_from_mapping(st.session_state).any()
+    if not ai_ready:
+        st.error("\U0001f916 The AI is not set up on this app yet. The administrator must add **GROQ_API_KEY** (and ideally "
+                 "**GEMINI_API_KEY**) in Streamlit \u2192 Settings \u2192 Secrets. Until then only the values read directly "
+                 "from the drawings are used.")
+    skip_clicked = analyze_clicked = False
+    if _readable:
+        analyze_clicked = st.button("\u2705 Looks right \u2014 let the AI check the drawings and continue \u2192", type="primary",
+                                    width="stretch", disabled=not (plot_ok and ai_ready),
+                                    help="The AI reads the most useful sheets (foundation, sections, schedules) for anything the "
+                                         "text reader could not, then you choose what you want in the house.")
+        if not ai_ready:
+            skip_clicked = st.button("Continue with the drawing values only \u2192", width="stretch", disabled=not plot_ok)
         else:
-            st.warning("We could not read rooms and sizes from these drawings (scanned images or photos). "
-                       "Ask the AI to read them, or answer a few questions about your house instead.")
-            if st.button("\u270f\ufe0f Answer questions about my house \u2192", type="primary", width="stretch"):
-                _switch_to_questions()
-            skip_clicked = False
-    with c2:
-        analyze_clicked = st.button("\U0001f9e0 Also ask the AI to fill gaps (optional)", width="stretch",
-                                    help="Optional. Sends the most useful pages (automatically resized to fit the free AI limits) to the vision model "
-                                         "for values not read from the drawings.")
+            with st.expander("AI not responding?"):
+                st.caption("If the AI service is busy, you can continue with the values read from the drawings and run "
+                           "the AI later by coming back to this step.")
+                skip_clicked = st.button("Continue without the AI this time", disabled=not plot_ok, key="skip_ai")
+    else:
+        st.warning("We could not read rooms and sizes from these drawings directly (scanned images or photos).")
+        c1, c2 = st.columns(2)
+        analyze_clicked = c1.button("\U0001f9e0 Let the AI read the drawings \u2192", type="primary", width="stretch",
+                                    disabled=not ai_ready)
+        if c2.button("\u270f\ufe0f Answer questions about my house instead", width="stretch"):
+            _switch_to_questions()
 
     if skip_clicked:
         _finish_step_2(base_params(pi), used_ai=False)
@@ -333,14 +341,11 @@ def step_2():
 
     if analyze_clicked:
         if not keys_from_mapping(st.session_state).any():
-            st.error(
-                "No AI key is configured. Paste a free Groq key (console.groq.com/keys) or a Gemini key in the sidebar, "
-                "or continue with the drawing data - values read from the drawings are still used."
-            )
+            st.error("The AI is not set up (no key in Streamlit secrets).")
         elif not images:
             st.error("No pages to send to the AI - use 'Continue without AI'.")
         else:
-            with st.spinner("Calling the vision model for the values not already read from the drawings... up to ~30s"):
+            with st.spinner("The AI is checking your drawings... (up to about 30 seconds)"):
                 params, raw_text, errors = extract_building_params(
                     api_key=st.session_state["groq_api_key"],
                     images=images,

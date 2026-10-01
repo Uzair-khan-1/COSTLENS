@@ -39,27 +39,17 @@ def render_sidebar() -> None:
         st.markdown("---")
         _render_project_box()
         _render_help_box()
-        with st.expander("\U0001f916 AI assistant (optional)"):
-            st.caption("The app works without AI. A free key lets it read hand sketches and photos and answer questions.")
-            # Optional user-supplied key (session memory only, never written to disk or to project files).
-            user_key = st.text_input(
-                "Groq API key (optional)", type="password", key="user_groq_api_key",
-                help="Paste your own free key from https://console.groq.com/keys to use AI sketch reading, AI drawing "
-                     "analysis and the AI copilot. Kept in session memory only. Leave blank to use the app's configured key, if any.",
-            )
-            st.session_state["groq_api_key"] = (user_key or "").strip() or (config.get_secret("GROQ_API_KEY", "") or "")
-            st.caption("More free AI providers - used automatically when the free Groq limit is reached. Gemini has much "
-                       "larger free limits; its free tier may use inputs to improve Google's models.")
-            gem = st.text_input("Google Gemini API key", type="password", key="user_gemini_api_key",
-                                help="Free key from https://aistudio.google.com/apikey")
-            orr = st.text_input("OpenRouter API key", type="password", key="user_openrouter_api_key",
-                                help="Free key from https://openrouter.ai/keys (uses ':free' models)")
-            st.session_state["gemini_api_key"] = (gem or "").strip() or (config.get_secret("GEMINI_API_KEY", "") or "")
-            st.session_state["openrouter_api_key"] = (orr or "").strip() or (config.get_secret("OPENROUTER_API_KEY", "") or "")
-            active = [n for n, k in (("Groq", "groq_api_key"), ("Gemini", "gemini_api_key"), ("OpenRouter", "openrouter_api_key"))
-                      if st.session_state.get(k)]
-            st.caption("AI: " + (" \u2192 ".join(active) if active else "off (built-in rules only)"))
-
+        # AI keys live on the server only (Streamlit secrets) - never typed in by users, never saved in project files
+        st.session_state["groq_api_key"] = config.get_secret("GROQ_API_KEY", "") or ""
+        st.session_state["gemini_api_key"] = config.get_secret("GEMINI_API_KEY", "") or ""
+        st.session_state["openrouter_api_key"] = config.get_secret("OPENROUTER_API_KEY", "") or ""
+        active = [n for n, k in (("Groq", "groq_api_key"), ("Gemini", "gemini_api_key"), ("OpenRouter", "openrouter_api_key"))
+                  if st.session_state.get(k)]
+        if active:
+            st.caption("\U0001f916 AI assistant: ready")
+        else:
+            st.caption("\u26a0\ufe0f AI assistant not set up - the administrator must add GROQ_API_KEY / GEMINI_API_KEY "
+                       "in Streamlit secrets.")
         if st.button("\U0001f504 Start New Project", width="stretch"):
             reset_project()
             st.rerun()

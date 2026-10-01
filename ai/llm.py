@@ -198,7 +198,7 @@ def friendly_error(exc: Exception) -> str:
         w = retry_after_seconds(exc)
         return "The free AI limit has been reached" + (f" - try again in about {int(w) + 1} s." if w else " - try again in a minute.")
     if is_auth_error(exc):
-        return "The AI key was rejected - check the key in the sidebar."
+        return "The AI key was rejected - check GROQ_API_KEY / GEMINI_API_KEY in Streamlit secrets."
     return f"The AI service could not be reached ({str(exc)[:160]})."
 
 

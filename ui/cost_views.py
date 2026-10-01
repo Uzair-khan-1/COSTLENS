@@ -102,7 +102,7 @@ def _headline(cost) -> None:
     from ui.illustrations import stat_cards_html
     s = cost.settings
     st.markdown(
-        f"<div style='padding:14px 18px;border-radius:14px;background:linear-gradient(135deg,#0B1E3D,#0D9488);color:white;"
+        f"<div style='padding:14px 18px;border-radius:14px;background:linear-gradient(120deg,#1B2F5B 0%,#2E86DE 70%,#14B8A6 100%);color:white;"
         f"margin:6px 0 10px 0'><div style='font-size:14px;opacity:.85'>Estimated cost of your house in {s.city}</div>"
         f"<div style='font-size:34px;font-weight:800;line-height:1.2'>{pkr(cost.total)}</div>"
         f"<div style='font-size:14px;opacity:.9'>Likely between {pkr(cost.low)} and {pkr(cost.high)} \u00b7 "
@@ -188,7 +188,7 @@ def _cashflow(cost) -> None:
         y=alt.Y("sum(Lakh):Q", title="Rs lakh this month"),
         color=alt.Color("Part:N", legend=alt.Legend(orient="top", title=None),
                         scale=alt.Scale(domain=["Materials", "Labour", "Contractor, extras & contingency", "Price rise (escalation)"],
-                                        range=[config.BRAND_TEAL, "#F59E0B", "#1F3864", "#F87171"])),
+                                        range=[config.BRAND_TEAL, "#F4B023", "#1B2F5B", "#F87171"])),
         tooltip=["Month:N", "Part:N", alt.Tooltip("sum(Lakh):Q", title="Rs lakh", format=",.1f")])
     st.altair_chart(bars.properties(height=300), width="stretch")
     peak = max(cost.cashflow, key=lambda m: m["Total"])

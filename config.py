@@ -12,9 +12,9 @@ import os
 from pathlib import Path
 
 APP_NAME = "CostLens"
-APP_TAGLINE = "From plans to materials."
+APP_TAGLINE = "Materials \u2022 Cost \u2022 Schedule"
 APP_FULL_NAME = "CostLens - Drawing-based Material Take-Off for 5-10 marla houses"
-APP_VERSION = "0.13.0"
+APP_VERSION = "0.14.0"
 
 # Brand assets (see assets/generate_logo.py to regenerate/tweak).
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
@@ -31,12 +31,12 @@ LOGO_HORIZONTAL_ON_DARK_PATH = ASSETS_DIR / "costlens_logo_on_dark.png"
 # injected by ui.theme, kept here as the single source of truth for any
 # Python code that needs a hex value (e.g. chart colors).
 #
-BRAND_NAVY = "#0B1E3D"
-BRAND_NAVY_LIGHT = "#123A5A"
-BRAND_TEAL = "#0D9488"
-BRAND_TEAL_BRIGHT = "#2DD4BF"
-BRAND_GOLD = "#FBBF24"
-BRAND_BG = "#F4F7FB"
+BRAND_NAVY = "#1B2F5B"  # logo navy
+BRAND_NAVY_LIGHT = "#26417A"
+BRAND_TEAL = "#2E86DE"  # logo blue (primary accent)
+BRAND_TEAL_BRIGHT = "#5CC8E8"
+BRAND_GOLD = "#F4B023"  # logo coin
+BRAND_BG = "#F5F8FC"
 
 # Groq model IDs. Kept in one place so they're easy to bump as Groq
 # updates its free-tier vision-capable model lineup. Groq has deprecated

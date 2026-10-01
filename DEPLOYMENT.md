@@ -152,3 +152,15 @@ fails, the log will show the exact `pip install` or Python traceback error.
   Cloud's filesystem is ephemeral (wiped on every restart/redeploy). For
   real persistence, connect a free-tier hosted Postgres (e.g. Supabase,
   Neon) — a good "Roadmap" item, not required for the MVP.
+
+
+## AI keys (required)
+CostLens uses AI to check the drawings, read sketches and quotes, and answer questions. The keys are kept on the server
+only - users never type them. In Streamlit Cloud: your app -> Settings -> Secrets:
+
+```
+GROQ_API_KEY = "gsk_..."          # free key from https://console.groq.com/keys
+GEMINI_API_KEY = "..."            # recommended backup, free key from https://aistudio.google.com/apikey
+OPENROUTER_API_KEY = "..."        # optional second backup
+ADMIN_PASSWORD = "choose-a-strong-password"   # price-update admin page
+```

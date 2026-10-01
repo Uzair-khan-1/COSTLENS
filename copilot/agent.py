@@ -235,7 +235,7 @@ def run_agent(api_key: str, state: ProjectState, history: List[dict], user_text:
     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history[-4:] + [{"role": "user", "content": user_text}]
     targets = _targets(api_key, keys, client)
     if not targets:
-        return AgentReply("", [], [], error="No AI key - add a free Groq or Gemini key in the sidebar.")
+        return AgentReply("", [], [], error="The AI is not set up - add GROQ_API_KEY / GEMINI_API_KEY in Streamlit secrets.")
     log: List[dict] = []
     last_exc: Optional[Exception] = None
     for _label, cl, model in targets:
@@ -349,7 +349,7 @@ def answer_offline(state: ProjectState, text: str) -> AgentReply:
         "Without an AI key I understand these requests:\n- *explain steel* / *why 955 bags of cement?* / *explain CON-001*\n"
         "- *what if block walls?* / *what if insulated roof?* / *what if 12 ft floor height?* / *what if only 4 ACs?*\n"
         "- *check my take-off* - *what is assumed?* - *how can I save material?*\n"
-        "Add a free Groq key in the sidebar to ask anything in your own words (English or Urdu) and to edit rooms by chat.")
+        "When the AI is set up (Streamlit secrets) you can ask anything in your own words (English or Urdu) and edit rooms by chat.")
 
 
 def _whatif_reply(box: Toolbox, changes: List[dict], label: str) -> AgentReply:

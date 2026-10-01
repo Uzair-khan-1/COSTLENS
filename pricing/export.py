@@ -12,7 +12,7 @@ from openpyxl.utils import get_column_letter
 
 from pricing.costing import CONTRACTS, CostResult, pkr
 
-NAVY, TEAL = "1F3864", "0D9488"
+NAVY, TEAL = "1B2F5B", "2E86DE"
 FONT = "Arial"
 THIN = Side(style="thin", color="D0D7E2")
 BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
@@ -216,7 +216,8 @@ def cost_pdf(cost: CostResult, project_name: str, gov=None) -> Optional[bytes]:
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm, topMargin=14 * mm, bottomMargin=14 * mm)
     ss = getSampleStyleSheet()
     small = ss["BodyText"].clone("s", fontSize=8.5, leading=11)
-    story = [Paragraph(f"<b>{project_name}</b> - Cost estimate", ss["Title"]),
+    logo = pdf_logo()
+    story = ([logo] if logo else []) + [Paragraph(f"<b>{project_name}</b> - Cost estimate", ss["Title"]),
              Paragraph(f"{s.city} \u00b7 {CONTRACTS[s.contract][0]} \u00b7 {date.today():%d %b %Y} \u00b7 covered area "
                        f"{cost.covered_sft:,.0f} sq ft", small), Spacer(1, 4 * mm)]
     rows = [["", "Amount"], ["Materials", pkr(cost.materials)], ["Labour", pkr(cost.labour)],
@@ -229,7 +230,7 @@ def cost_pdf(cost: CostResult, project_name: str, gov=None) -> Optional[bytes]:
     if gov is not None:
         rows.append(["Government estimate (MRS/CSR, for comparison)", pkr(gov.total)])
     t = Table(rows, colWidths=[115 * mm, 55 * mm])
-    t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F3864")), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+    t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1B2F5B")), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                            ("FONTSIZE", (0, 0), (-1, -1), 9.5), ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D0D7E2")),
                            ("ALIGN", (1, 0), (1, -1), "RIGHT"),
                            ("FONTNAME", (0, len(rows) - (4 if gov is not None else 3)), (-1, len(rows) - (4 if gov is not None else 3)), "Helvetica-Bold"),
@@ -238,7 +239,7 @@ def cost_pdf(cost: CostResult, project_name: str, gov=None) -> Optional[bytes]:
     story += [t, Spacer(1, 5 * mm), Paragraph("<b>Largest costs by trade</b>", ss["Heading4"])]
     tr = [["Trade", "Materials", "Labour"]] + [[n, pkr(a), pkr(b)] for n, a, b in cost.by_trade()[:12]]
     t2 = Table(tr, colWidths=[90 * mm, 40 * mm, 40 * mm])
-    t2.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0D9488")), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+    t2.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2E86DE")), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                             ("FONTSIZE", (0, 0), (-1, -1), 9), ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D0D7E2")),
                             ("ALIGN", (1, 0), (-1, -1), "RIGHT")]))
     story += [t2, Spacer(1, 4 * mm)]
@@ -246,7 +247,7 @@ def cost_pdf(cost: CostResult, project_name: str, gov=None) -> Optional[bytes]:
         cf = [["Month", "Money needed", "Cumulative"]] + [[f"{m['Month of']:%b %Y}", pkr(m["Total"]), pkr(m["Cumulative"])]
                                                            for m in cost.cashflow if m["Total"] > 0]
         t3 = Table(cf, colWidths=[40 * mm, 45 * mm, 45 * mm])
-        t3.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F3864")), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        t3.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1B2F5B")), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                                 ("FONTSIZE", (0, 0), (-1, -1), 9), ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D0D7E2")),
                                 ("ALIGN", (1, 0), (-1, -1), "RIGHT")]))
         story += [Paragraph("<b>Money needed each month</b>", ss["Heading4"]), t3]
@@ -254,3 +255,18 @@ def cost_pdf(cost: CostResult, project_name: str, gov=None) -> Optional[bytes]:
                                            "Not a certified QS estimate.", small)]
     doc.build(story)
     return buf.getvalue()
+
+
+def pdf_logo(width_mm: float = 52.0):
+    """The CostLens logo as a ReportLab flowable (None if the file is missing)."""
+    try:
+        import config
+        from reportlab.lib.units import mm
+        from reportlab.platypus import Image
+        if config.LOGO_HORIZONTAL_PATH.exists():
+            img = Image(str(config.LOGO_HORIZONTAL_PATH), width=width_mm * mm, height=width_mm * mm * 512 / 1500)
+            img.hAlign = "LEFT"
+            return img
+    except Exception:  # noqa: BLE001
+        pass
+    return None

@@ -12,7 +12,7 @@ from openpyxl.utils import get_column_letter
 from scheduling.engine import WEEKDAY_NAMES, Schedule
 
 FONT = "Arial"
-NAVY, TEAL, RED, GREY = "1F3864", "0D9488", "C0392B", "D9E1F2"
+NAVY, TEAL, RED, GREY = "1B2F5B", "2E86DE", "C0392B", "D9E1F2"
 HDR_FILL = PatternFill("solid", fgColor=NAVY)
 PHASE_FILL = PatternFill("solid", fgColor=GREY)
 BAR = PatternFill("solid", fgColor=TEAL)

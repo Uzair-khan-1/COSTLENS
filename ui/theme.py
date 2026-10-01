@@ -43,29 +43,27 @@ html, body, [class*="css"] {{
 .cl-hero {{
     display: flex;
     align-items: center;
-    gap: 18px;
-    padding: 18px 26px;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px 24px;
+    padding: 12px 24px;
     margin: -1rem -1rem 1.5rem -1rem;
-    background: linear-gradient(120deg, {config.BRAND_NAVY} 0%, {config.BRAND_NAVY_LIGHT} 100%);
+    background: #FFFFFF;
     border-radius: 0 0 18px 18px;
-    box-shadow: 0 6px 24px rgba(11, 30, 61, 0.18);
+    border-bottom: 4px solid transparent;
+    border-image: linear-gradient(90deg, {config.BRAND_NAVY}, {config.BRAND_TEAL} 55%, #14B8A6, {config.BRAND_GOLD}) 1;
+    box-shadow: 0 6px 24px rgba(27, 47, 91, 0.10);
 }}
-.cl-hero img {{ height: 46px; display: block; }}
-.cl-hero-text h1 {{
-    color: #FFFFFF !important;
-    font-size: 1.5rem !important;
-    font-weight: 800 !important;
-    margin: 0 !important;
-    letter-spacing: -0.01em;
-}}
+.cl-hero img {{ height: 74px; display: block; }}
 .cl-hero-text p {{
-    color: {config.BRAND_TEAL_BRIGHT} !important;
-    font-size: 0.8rem !important;
-    letter-spacing: 0.13em;
-    text-transform: uppercase;
-    margin: 2px 0 0 0 !important;
-    font-weight: 600;
+    color: #5B6B85 !important;
+    font-size: 0.92rem !important;
+    max-width: 330px;
+    margin: 0 !important;
+    font-weight: 500;
+    line-height: 1.35;
 }}
+@media (max-width: 640px) {{ .cl-hero img {{ height: 56px; }} .cl-hero-text {{ display: none; }} }}
 
 /* ---------------------------------------------------------------- *
  * Headings
@@ -92,7 +90,7 @@ h1, h2, h3 {{ font-weight: 700; }}
 }}
 .stButton > button[kind="primary"],
 [data-testid="stFormSubmitButton"] button[kind="primary"] {{
-    background: linear-gradient(120deg, {config.BRAND_TEAL} 0%, #0F766E 100%);
+    background: linear-gradient(120deg, {config.BRAND_TEAL} 0%, #14B8A6 100%);
     border: none;
 }}
 
@@ -233,25 +231,19 @@ def inject_theme() -> None:
 
 
 def render_hero() -> None:
-    """Branded header banner (logo + wordmark + tagline) shown above every
-    step's content. Degrades to a text-only banner if the logo PNG is
-    missing (e.g. assets/generate_logo.py hasn't been run in a fork)."""
-    logo_html = ""
+    """Branded header: the full-colour CostLens logo on a light card with the logo's blue-to-teal accent line."""
+    logo_html = f"<h1 style='margin:0'>{config.APP_NAME}</h1>"
     try:
-        with open(config.LOGO_ICON_PATH, "rb") as fh:
+        with open(config.LOGO_HORIZONTAL_PATH, "rb") as fh:
             b64 = base64.b64encode(fh.read()).decode("ascii")
-        logo_html = f'<img src="data:image/png;base64,{b64}" alt="{config.APP_NAME} logo" />'
+        logo_html = f'<img src="data:image/png;base64,{b64}" alt="{config.APP_NAME} - materials, cost, schedule" />'
     except OSError:
         pass
-
     st.markdown(
         f"""
         <div class="cl-hero">
             {logo_html}
-            <div class="cl-hero-text">
-                <h1>{config.APP_NAME}</h1>
-                <p>{config.APP_TAGLINE}</p>
-            </div>
+            <div class="cl-hero-text"><p>From your house drawings to the materials, the cost and the building schedule.</p></div>
         </div>
         """,
         unsafe_allow_html=True,

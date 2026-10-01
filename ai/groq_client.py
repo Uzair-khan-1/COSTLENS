@@ -43,7 +43,7 @@ def get_client(api_key: str) -> Groq:
     if not api_key:
         raise GroqClientError(
             "No Groq API key provided. Get a free key at https://console.groq.com/keys "
-            "and enter it in the sidebar, or set GROQ_API_KEY as an environment/secrets variable."
+            "and set GROQ_API_KEY in Streamlit secrets (or as an environment variable)."
         )
     return Groq(api_key=api_key)
 
@@ -201,7 +201,7 @@ def call_vision_model(
             last_exc = exc
             logger.warning("%s failed: %s", spec.label, exc)
     if last_exc is None:
-        raise GroqClientError("No AI key provided. Add a free Groq key (console.groq.com/keys) or a Gemini key in the sidebar.")
+        raise GroqClientError("No AI key configured. Add GROQ_API_KEY or GEMINI_API_KEY in Streamlit secrets.")
     raise GroqClientError(f"AI call failed on all configured providers: {friendly_error(last_exc)} ({last_exc})") from last_exc
 
 
@@ -255,5 +255,5 @@ def call_text_model(
         except Exception as exc:  # noqa: BLE001
             last_exc = exc
     if last_exc is None:
-        raise GroqClientError("No AI key provided. Add a free Groq key (console.groq.com/keys) or a Gemini key in the sidebar.")
+        raise GroqClientError("No AI key configured. Add GROQ_API_KEY or GEMINI_API_KEY in Streamlit secrets.")
     raise GroqClientError(f"AI call failed on all configured providers: {friendly_error(last_exc)} ({last_exc})") from last_exc

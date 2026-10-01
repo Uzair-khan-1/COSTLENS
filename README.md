@@ -1,4 +1,4 @@
-# CostLens — *From plans to materials.* (v0.13.0)
+# CostLens — *Materials • Cost • Schedule* (v0.14.0)
 
 A drawing-based **Material Take-Off (MTO)** tool for 5-10 marla houses in
 Pakistan. Upload the complete drawing set (CAD-exported PDFs work best); the
@@ -571,6 +571,17 @@ lines). See **[DETAILED_MTO.md](DETAILED_MTO.md)**.
 ---
 
 ## 8. Changelog
+
+**v0.14.0 — new logo, AI built in, "Not needed" answers, Excel opens cleanly**
+- New CostLens logo (vector, `assets/source/`): lens with building blocks, a Rs coin and a calendar; header, sidebar,
+  favicon and PDFs use it. App colours follow the logo (navy, blue-to-teal, gold).
+- AI is part of the main flow: Step 2's main button lets the AI check the drawings. Keys come only from Streamlit
+  secrets (GROQ_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY) - no key boxes for users.
+- Step 3: unanswered questions are shown first and highlighted with a progress bar; answered and drawing-filled ones
+  are folded away. Each optional item has "Not needed in my house", which removes it from materials, BOQ, cost and
+  schedule.
+- Excel: conditional formats without font name/size, internal links as Excel-style locations, table names never equal
+  to sheet names - the "We found a problem with some content" message is gone.
 
 **v0.13.0 — easier for owners: clearer order, consistent numbers, one-click downloads**
 - New order: 4 Materials (MTO) -> 5 Bill of Quantities & cost (priced BOQ first) -> 6 Schedule, workers & money per

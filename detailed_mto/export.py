@@ -28,7 +28,7 @@ from detailed_mto.engine import (ST_CALC, ST_CALC_ASSUMED, ST_NEEDS_INPUT, ST_NO
                                  ST_REFERENCE, DetailedResult, MaterialLine, purchase_rule)
 
 FONT = "Arial"
-NAVY, TEAL = "1F3864", "0D9488"
+NAVY, TEAL = "1B2F5B", "2E86DE"
 HDR_FILL = PatternFill("solid", fgColor=NAVY)
 CAT_FILL = PatternFill("solid", fgColor="D9E1F2")
 CARD_FILL = PatternFill("solid", fgColor="E8F3F1")
@@ -126,7 +126,9 @@ def _cell(ws, r, c, v, bold=False, fill=None, fmt=None, color=None, align=WRAP, 
 
 def _link(ws, r, c, text, target, size=9, bold=False, border=False):
     cell = ws.cell(row=r, column=c, value=text)
-    cell.hyperlink = f"#{target}"
+    # internal link as a proper "location" hyperlink (no external relationship) - what Excel itself writes
+    from openpyxl.worksheet.hyperlink import Hyperlink
+    cell.hyperlink = Hyperlink(ref=cell.coordinate, location=target, display=str(cell.value or ""))
     cell.font = _font(size=size, bold=bold, color=LINK_COLOR, underline="single")
     cell.alignment = Alignment(vertical="top")
     if border:
@@ -161,7 +163,7 @@ def _titled_sheet(wb, name, title, subtitle, headers, widths):
 def _add_table(ws, name, ncols, last_row, style="TableStyleLight9"):
     if last_row < 4:
         return
-    tbl = Table(displayName=name, ref=f"A3:{get_column_letter(ncols)}{last_row}")
+    tbl = Table(displayName=f"tbl{name}", ref=f"A3:{get_column_letter(ncols)}{last_row}")  # never the same as a sheet name
     tbl.tableStyleInfo = TableStyleInfo(name=style, showRowStripes=True, showColumnStripes=False)
     ws.add_table(tbl)
 
@@ -172,7 +174,7 @@ def _status_formatting(ws, col, first, last):
     for st, color in STATUS_COLORS.items():
         ws.conditional_formatting.add(
             f"{col}{first}:{col}{last}",
-            FormulaRule(formula=[f'${col}{first}="{st}"'], fill=PatternFill("solid", fgColor=color), stopIfTrue=True))
+            FormulaRule(formula=[f'${col}{first}="{st}"'], fill=PatternFill(fill_type="solid", bgColor=color), stopIfTrue=True))
 
 
 def _stage_code(m: MaterialLine) -> str:
@@ -473,8 +475,8 @@ def build_detailed_mto_workbook(result: DetailedResult) -> bytes:
         _cell(ws9, r, 5, hi, color=INPUT_FONT_COLOR)
         _cell(ws9, r, 6, f'=IF(B{r}=0,"n/a",IF(AND(B{r}>=D{r},B{r}<=E{r}),"OK","CHECK"))', bold=True)
     rr = len(BENCHMARKS) + 4
-    ws9.conditional_formatting.add(f"F5:F{rr}", FormulaRule(formula=['$F5="OK"'], fill=PatternFill("solid", fgColor="C6EFCE")))
-    ws9.conditional_formatting.add(f"F5:F{rr}", FormulaRule(formula=['$F5="CHECK"'], fill=PatternFill("solid", fgColor="FFC7CE")))
+    ws9.conditional_formatting.add(f"F5:F{rr}", FormulaRule(formula=['$F5="OK"'], fill=PatternFill(fill_type="solid", bgColor="C6EFCE")))
+    ws9.conditional_formatting.add(f"F5:F{rr}", FormulaRule(formula=['$F5="CHECK"'], fill=PatternFill(fill_type="solid", bgColor="FFC7CE")))
 
     _build_summary(summary, result, mats, sched_row, SCH_ID, SCH_QTY, last)
     wb.move_sheet("BOQ", offset=2 - wb.sheetnames.index("BOQ"))  # Summary, Material_Schedule, BOQ, ...
@@ -635,9 +637,9 @@ def _build_summary(ws, result: DetailedResult, mats: List[MaterialLine], sched_r
     if shop_last > header_row:
         rng = f"I{header_row + 1}:I{shop_last}"
         ws.conditional_formatting.add(rng, FormulaRule(formula=[f'LEFT($I{header_row + 1},1)="⚠"'],
-                                                       font=Font(name=FONT, size=9, bold=True, color="C65911")))
+                                                       font=Font(bold=True, color="C65911")))
         ws.conditional_formatting.add(rng, FormulaRule(formula=[f'LEFT($I{header_row + 1},1)="✔"'],
-                                                       font=Font(name=FONT, size=9, color="548235")))
+                                                       font=Font(color="548235")))
     ws.sheet_properties.outlinePr.summaryBelow = False
     ws.print_title_rows = f"{header_row}:{header_row}"
 

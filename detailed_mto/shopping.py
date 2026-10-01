@@ -66,7 +66,9 @@ def shopping_pdf(res: DetailedResult, trades: List[str] = None, prices: dict = N
     def rs(v: float) -> str:
         return f"{v:,.0f}"
 
-    story = [Paragraph(f"<b>{res.project.project_name}</b> - Material shopping list", ss["Title"]),
+    from pricing.export import pdf_logo
+    logo = pdf_logo()
+    story = ([logo] if logo else []) + [Paragraph(f"<b>{res.project.project_name}</b> - Material shopping list", ss["Title"]),
              Paragraph(f"CostLens &nbsp;|&nbsp; {datetime.now():%d %b %Y}" +
                        (f" &nbsp;|&nbsp; approximate prices for {city} (indicative - ask the shop for its rate)" if prices
                         else " &nbsp;|&nbsp; quantities only") +

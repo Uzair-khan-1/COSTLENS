@@ -110,7 +110,7 @@ def render_brief_step(pi, go_to_step, groq_key: str) -> None:
         with a1:
             ai_clicked = st.button("\U0001f9e0 Read my sketch & description with AI", type="primary", width="stretch",
                                    disabled=not ai_ready or not (kept or desc.strip()),
-                                   help=None if ai_ready else "Add a free Groq or Gemini API key in the sidebar to use AI reading.")
+                                   help=None if ai_ready else "The AI is not set up yet - the administrator must add the AI keys in Streamlit secrets.")
         with a2:
             rule_clicked = st.button("Read my description (no AI)", width="stretch", disabled=not desc.strip(),
                                      help="Reads plot size, storeys, number of bedrooms etc. from your text with simple rules.")
