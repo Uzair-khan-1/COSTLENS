@@ -74,7 +74,8 @@ class CostSettings:
     gov_bst_pct: float = 4.0
     gov_consultancy_pct: float = 1.0
     gov_contingency_pct: float = 1.0
-    labour_update_pct: float = 20.0  # MRS labour -> today (government estimate only)
+    labour_update_pct: float = 4.0  # government estimate: labour increase per year since the rate book's edition
+    material_update_pct: float = 0.0  # ... and for materials (Punjab 2024 -> 2026 evidence: +4%/yr labour, ~0% materials)
 
 
 @dataclass

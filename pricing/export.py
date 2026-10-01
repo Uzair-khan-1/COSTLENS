@@ -170,8 +170,8 @@ def build_cost_workbook(cost: CostResult, project_name: str, gov=None) -> bytes:
     # ---- government estimate
     if gov is not None:
         wg = wb.create_sheet("Government_Estimate")
-        _title(wg, f"Government estimate - {s.city}", f"Punjab MRS Rawalpindi {gov.edition} updated to today / Balochistan "
-               "CSR-2026 (Quetta). Items without a government item are priced at market cost (see Source).")
+        _title(wg, f"Government estimate - {s.city}", f"Rates from {gov.book} {gov.edition} (Balochistan CSR-2026 for Quetta). "
+               "Items without a government item are priced at market cost (see Source).")
         _hdr(wg, 4, ["WI", "Description", "Unit", "Quantity", "Rate (Rs)", "Amount (Rs)", "Source", "Item"],
              [11, 50, 7, 12, 12, 14, 40, 22])
         r = 4

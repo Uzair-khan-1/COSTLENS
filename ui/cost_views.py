@@ -59,7 +59,7 @@ def current_cost(res):
 def government(res, cost):
     from pricing.government import government_estimate, update_factors
     s = cost.settings
-    uf = update_factors(book(), 1 + s.labour_update_pct / 100.0)
+    uf = update_factors(None, s.labour_update_pct, getattr(s, "material_update_pct", 0.0))
     wc, loose = wi_market_costs(cost, res)
     return government_estimate(res, s.city, uf, wc, s.gov_bst_pct, s.gov_consultancy_pct, s.gov_contingency_pct, loose), uf
 
@@ -286,28 +286,38 @@ def _quote_reader(res) -> None:
 
 
 def _government(res, cost) -> None:
+    from pricing.government import CITY_BOOK, edition_age_years, mrs_index
     s = cost_settings()
-    st.caption("How a government engineer would price the same BOQ (for PC-Is): Punjab MRS rates (Rawalpindi 2024 edition, "
-               "updated to today) or Balochistan CSR-2026 rates for Quetta. Owners usually pay market prices - see the main figure.")
-    c1, c2, c3, c4 = st.columns(4)
-    lab = c1.number_input("Labour increase since the MRS %", 0.0, 100.0, float(s.labour_update_pct), 5.0, key="gov_lab")
-    bst = c2.number_input("BST %", 0.0, 20.0, float(s.gov_bst_pct), 0.5, key="gov_bst")
-    cons = c3.number_input("Consultancy %", 0.0, 10.0, float(s.gov_consultancy_pct), 0.5, key="gov_cons")
-    cont = c4.number_input("Contingency %", 0.0, 10.0, float(s.gov_contingency_pct), 0.5, key="gov_cont")
-    if (lab, bst, cons, cont) != (s.labour_update_pct, s.gov_bst_pct, s.gov_consultancy_pct, s.gov_contingency_pct):
-        _set(labour_update_pct=lab, gov_bst_pct=bst, gov_consultancy_pct=cons, gov_contingency_pct=cont)
+    books = mrs_index()
+    district = CITY_BOOK.get(s.city if s.city in CITY_BOOK else "Lahore" if s.city in ("Faisalabad", "Multan") else "Islamabad")[0]
+    bk = books.get(district, {})
+    src = ("Balochistan CSR-2026 rates from real estimates (other items: Rawalpindi MRS +5%)" if s.city == "Quetta"
+           else f"{bk.get('book', 'government rate book')} {bk.get('district', '')} {bk.get('edition', '')}")
+    age = edition_age_years(bk) if bk else 0.0
+    st.caption(f"How a government engineer would price the same BOQ (for PC-Is), using **{src}**"
+               + (f" - this edition is {age:.1f} years old, so rates are brought to today." if age > 0.05 else " - the current edition.")
+               + " Owners usually pay market prices - see the main figure.")
+    c1, c2, c3, c4, c5 = st.columns(5)
+    lab = c1.number_input("Labour increase / year %", 0.0, 30.0, float(s.labour_update_pct), 0.5, key="gov_lab",
+                          help="Used only for older editions. Punjab MRS 2024 -> 2026 showed about +4% per year.")
+    mat = c2.number_input("Materials increase / year %", -10.0, 30.0, float(getattr(s, "material_update_pct", 0.0)), 0.5, key="gov_mat")
+    bst = c3.number_input("BST %", 0.0, 20.0, float(s.gov_bst_pct), 0.5, key="gov_bst")
+    cons = c4.number_input("Consultancy %", 0.0, 10.0, float(s.gov_consultancy_pct), 0.5, key="gov_cons")
+    cont = c5.number_input("Contingency %", 0.0, 10.0, float(s.gov_contingency_pct), 0.5, key="gov_cont")
+    if (lab, mat, bst, cons, cont) != (s.labour_update_pct, getattr(s, "material_update_pct", 0.0), s.gov_bst_pct,
+                                       s.gov_consultancy_pct, s.gov_contingency_pct):
+        _set(labour_update_pct=lab, material_update_pct=mat, gov_bst_pct=bst, gov_consultancy_pct=cons, gov_contingency_pct=cont)
         st.rerun()
-    gov, uf = government(res, cost)
+    gov, _uf = government(res, cost)
     m1, m2, m3 = st.columns(3)
     m1.metric("Government estimate", pkr(gov.total), f"{(gov.total / cost.total - 1) * 100:+.0f}% vs market" if cost.total else None,
               delta_color="off")
     m2.metric("Per sq ft", f"Rs {gov.total / max(cost.covered_sft, 1):,.0f}")
-    m3.metric("Priced from MRS/CSR items", f"{gov.mapped_share:.0%}")
-    st.caption(f"Update of the {gov.edition} MRS to today: labour x{uf.labour:.2f}, materials x{uf.material:.2f} ({uf.basis}). "
-               "Import a newer MRS in 'Price updates' and these factors are no longer needed.")
+    m3.metric("Priced from the government book", f"{gov.mapped_share:.0%}")
     df = pd.DataFrame(gov.lines)
     st.dataframe(df, hide_index=True, width="stretch", height=420,
                  column_config={"Description": st.column_config.TextColumn(width="large"),
+                                "Item": st.column_config.TextColumn("Book item", width="large"),
                                 "Amount": st.column_config.NumberColumn(format="localized")})
     for label, v in gov.extras:
         st.caption(f"+ {label}: {pkr(v)}")
@@ -375,7 +385,7 @@ def _admin(res) -> None:
             st.markdown(st.session_state["adm_report"])
     st.caption("The weekly GitHub Action (.github/workflows/update-prices.yml) runs the same agent and commits the rates. "
                "On Streamlit Cloud, changes made here last until the app restarts.")
-    st.markdown("**Import a new MRS edition** (Punjab Finance Department PDF, any district)")
+    st.markdown("**Import a new rate book** - Punjab MRS (any district), KP MRS or Sindh CSR PDF. The newest edition per city is used.")
     mrs = st.file_uploader("MRS PDF", type=["pdf"], key="adm_mrs")
     if mrs is not None and st.button("Import this MRS", key="adm_mrs_go"):
         import tempfile
@@ -388,7 +398,7 @@ def _admin(res) -> None:
         with st.spinner("Reading the MRS tables..."):
             data = parse_mrs(fh.name)
             path = save(data, Path(RATES_DIR))
-        st.success(f"Imported {len(data['items']):,} rates: {data['district']} {data['edition']} ({path.name}).")
+        st.success(f"Imported {len(data['items']):,} rates: {data.get('book', 'MRS')} {data['district']} {data['edition']} ({path.name}).")
 
 
 # ---------------------------------------------------------------- the step

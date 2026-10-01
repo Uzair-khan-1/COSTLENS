@@ -1,27 +1,25 @@
 """
-Government-rate estimate (as used for PC-Is and engineer's estimates).
+Government-rate estimate (engineer's estimate / PC-I style) from the official rate books:
 
-Sources
--------
-* Punjab MRS (Market Rate System), District Rawalpindi, 2nd Bi-Annual 2024 - imported from the Finance
-  Department PDF by pricing/mrs.py (labour + composite rates for every item).
-* Balochistan CSR-2026 (Composite Schedule of Rates) - the rates quoted in two real CSR-2026 engineer's
-  estimates (Staff Quarter, Trauma Centre Khuzdar; DSP Residence, Loralai). Used for Quetta.
+  Islamabad, Rawalpindi            Punjab MRS, District Rawalpindi (Finance Department, bi-annual)
+  Lahore, Faisalabad, Multan       Punjab MRS, District Lahore
+  Peshawar                         Khyber Pakhtunkhwa MRS (MRS Cell, Finance Department)
+  Karachi                          Sindh Composite Schedule of Rates (Standing Rates Committee)
+  Quetta                           Balochistan CSR-2026 rates quoted in two real CSR-2026 estimates
+                                   (Khuzdar staff quarter, Loralai DSP residence); other items from Rawalpindi MRS +5%
 
-Bringing an old MRS to today
-----------------------------
-    composite_today = labour x labour_factor + (composite - labour) x material_factor
-labour_factor   - wage increase since the MRS edition (default +20%, editable)
-material_factor - today's rate book / the MRS-period prices of a basket of main materials (cement, steel,
-                  bricks, sand, crush), weighted by their share of a typical house.
-When a newer MRS is imported, its edition date is used and the factors fall back towards 1.0.
-
-Each BOQ work item is matched to MRS items (MRS_MAP). Items without a match are priced from the market
-cost of the same work item and flagged as such - nothing is left out silently.
+Books are imported by pricing/mrs.py into data/rates/. Each BOQ work item is found in a book by its WORDING
+(WI_SPECS: required patterns + unit), so new editions and other provinces work without renumbering.
+Rates from an older edition are brought to today with factors per year since the edition:
+labour +4%/year and materials +0%/year by default - measured from the two Rawalpindi editions
+(2nd Bi-Annual 2024 -> 2nd Bi-Annual 2026, 1,874 identical items: labour +8%, material part -2%).
+Work items without a government item are priced at their market cost and flagged.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -33,27 +31,58 @@ CWT_KG = 50.8
 CUM_CFT = 35.3147
 SQM_SFT = 10.7639
 
-# ---- MRS item(s) per BOQ work item: [(key "chapter-item-sub", multiplier from the MRS unit to the WI unit)]
-_C100 = 1 / 100.0  # per 100 cft / 100 sft -> per cft / sft
-MRS_MAP: Dict[str, List[Tuple[str, float]]] = {
-    "WI-EW-01": [("3-7-i", 1 / 1000.0)], "WI-EW-02": [("3-7-i", 1 / 1000.0)], "WI-EW-03": [("3-8-i", 1 / 1000.0)],
-    "WI-EW-04": [("3-15-i", 1 / 1000.0)], "WI-EW-05": [("3-15-ii", 1 / 1000.0)],
-    "WI-CN-01": [("6-5-i", _C100)], "WI-CN-02": [("6-5-i", _C100)],
-    "WI-CN-03": [("6-5-f", _C100)], "WI-CN-04": [("6-5-f", _C100)], "WI-CN-05": [("6-5-f", _C100)],
-    "WI-CN-06": [("6-5-f", _C100)], "WI-CN-07": [("6-5-f", _C100)], "WI-CN-08": [("6-5-f", _C100)],
-    "WI-CN-09": [("6-5-f", _C100)], "WI-CN-10": [("6-5-f", _C100)], "WI-CN-11": [("6-5-f", _C100)],
-    "WI-CN-12": [("6-36-i", _C100)],
-    **{f"WI-RF-0{i}": [("6-12-ii", 1 / CWT_KG)] for i in range(1, 8)},
-    "WI-MS-01": [("7-4-i.4", _C100)], "WI-MS-02": [("7-5-i.4", _C100)], "WI-MS-04": [("7-5-i.4", _C100)],
-    "WI-MS-03": [("7-5-i.2", _C100 * 0.375)],  # 4.5 in wall: 0.375 cft per sft
-    "WI-PL-01": [("11-9-b", _C100)], "WI-PL-02": [("11-9-c", _C100)], "WI-PL-03": [("11-10-c", _C100)],
-    "WI-WP-01": [("9-5-", _C100), ("9-10-b", _C100), ("13-9-i", _C100)],
-    "WI-FL-01": [("10-46-ii", 1.0)], "WI-FL-02": [("10-24-i", 1.0)], "WI-FL-03": [("10-25-i", 1.0)],
-    "WI-FL-04": [("10-48-i", 1.0)], "WI-FL-07": [("10-45-b", 1.0)],
-    "WI-PT-01": [("13-46-", _C100), ("13-31-a", _C100), ("13-31-b", _C100)],
-    "WI-PT-02": [("13-46-", _C100), ("13-31-a", _C100), ("13-31-b", _C100)],
-    "WI-PT-03": [("13-33-i", _C100), ("13-33-ii", _C100)],
-    "WI-PB-01": [("19-3-", 1.0)],
+CITY_BOOK = {"Islamabad": ("Rawalpindi", 1.00), "Rawalpindi": ("Rawalpindi", 1.00), "Lahore": ("Lahore", 1.00),
+             "Peshawar": ("Peshawar", 1.00), "Karachi": ("Karachi", 1.00), "Quetta": ("Rawalpindi", 1.05)}
+
+_EXCL = (r"dismantl|repair|\bold\b|extra (?:for|labour|cost|over|on)|add(?:ing)? extra|deduct|cleaning|removing|re-?lay|"
+         r"\bpiles?\b|culvert|canal|weir|barrage|sewer|manhole|road|pavement|lining|\bwells?\b|syphon|tunnel|"
+         r"spout|carriage|stack|sub-?soil|below water|sedimentation|filter bed|hydraulic|\bdams?\b|"
+         r"jack arch|rubble|stone masonry|mud mortar|kankar|perforated|honey ?comb|underpinning|tube ?well|"
+         r"false ceiling|plaster of paris|collapsible|\bgates?\b")
+# WI: list of alternatives, each (required regexes, unit base, multiplier on top of the unit conversion) - first match wins
+_R124 = r"1\s*:\s*2\s*:\s*4"
+_RCC = r"r\.?\s?c\.?\s?c\b|reinforced cement concrete|reinforced concrete"
+_NOEX = r"shingle|gravel|rock|blasting|ballast"
+_EXC = [([r"excavat", r"foundation", r"build", r"ordinary"], "cft", 1.0, _NOEX), ([r"excavat", r"foundation", r"build"], "cft", 1.0, _NOEX),
+        ([r"excavat", r"foundation"], "cft", 1.0, _NOEX)]
+_BRICK = r"brick\s*work|pacca brick|burnt brick|1st class brick"
+WI_SPECS: Dict[str, list] = {
+    "WI-EW-01": _EXC, "WI-EW-02": _EXC, "WI-EW-03": _EXC,
+    "WI-EW-04": [([r"fill", r"under floor", r"surplus|excavated"], "cft", 1.0), ([r"fill", r"surplus"], "cft", 1.0)],
+    "WI-EW-05": [([r"fill", r"under floor", r"new earth|from outside|borrow"], "cft", 1.0),
+                 ([r"fill", r"new earth|from outside|borrow"], "cft", 1.0)],
+    "WI-CN-01": [([r"concrete", r"plain|p\.?c\.?c", r"1\s*:\s*4\s*:\s*8"], "cft", 1.0, r"ballast|precast|block"),
+                 ([r"concrete", r"1\s*:\s*4\s*:\s*8"], "cft", 1.0, r"precast|block|ballast")],
+    "WI-CN-02": [([r"concrete", r"plain|p\.?c\.?c", r"1\s*:\s*4\s*:\s*8"], "cft", 1.0, r"ballast|precast|block"),
+                 ([r"concrete", r"1\s*:\s*4\s*:\s*8"], "cft", 1.0, r"precast|block|ballast")],
+    **{w: [([_RCC, r"slab|beam|column", _R124], "cft", 1.0, r"raft|piles?\b|block|kerb|precast (?:units|slab)"),
+           ([_RCC, _R124], "cft", 1.0, r"block|kerb"), ([r"concrete", r"plain", _R124], "cft", 1.0, r"block|kerb|ballast")]
+       for w in ("WI-CN-03", "WI-CN-04", "WI-CN-05", "WI-CN-06", "WI-CN-07", "WI-CN-08", "WI-CN-09", "WI-CN-10", "WI-CN-11")},
+    "WI-CN-12": [([r"damp\s*-?\s*proof|d\.?\s?p\.?\s?c", r"concrete|1\s*:\s*2\s*:\s*4"], "sft", 1.0)],
+    **{f"WI-RF-0{i}": [([r"reinforcement|tor steel|deformed", r"fabricat|cutting|bending|bind", r"deformed|grade[- ]?60|tor"], "kg", 1.0),
+                       ([r"reinforcement", r"fabricat|cutting|bending|bind"], "kg", 1.0)] for i in range(1, 8)},
+    "WI-MS-01": [([_BRICK, r"foundation|plinth", r"cement,?\s*sand\s*(?:-\s*)?mortar", r"1\s*:\s*6(?!\s*:)"], "cft", 1.0, r"lime|surkhi|mud")],
+    "WI-MS-02": [([_BRICK, r"ground floor|super\s*-?structure", r"cement,?\s*sand\s*(?:-\s*)?mortar", r"1\s*:\s*6(?!\s*:)"], "cft", 1.0, r"lime|surkhi|mud")],
+    "WI-MS-04": [([_BRICK, r"ground floor|super\s*-?structure", r"cement,?\s*sand\s*(?:-\s*)?mortar", r"1\s*:\s*6(?!\s*:)"], "cft", 1.0, r"lime|surkhi|mud")],
+    "WI-MS-03": [([_BRICK, r"ground floor|super\s*-?structure", r"cement,?\s*sand\s*(?:-\s*)?mortar", r"1\s*:\s*4(?!\s*:)"], "cft", 0.375, r"lime|surkhi|mud")],
+    "WI-PL-01": [([r"^cement (?:sand )?plaster|cement plaster 1\s*:\s*4", r"1\s*:\s*4", r"½|1/2\s*\"|13\s*mm|12\s*mm"], "sft", 1.0)],
+    "WI-PL-02": [([r"^cement (?:sand )?plaster|cement plaster 1\s*:\s*4", r"1\s*:\s*4", r"¾|3/4\s*\"|20\s*mm|19\s*mm"], "sft", 1.0)],
+    "WI-PL-03": [([r"cement (?:sand )?plaster", r"soffit", r"1\s*:\s*[34]"], "sft", 1.0),
+                 ([r"cement (?:sand )?plaster", r"soffit|ceiling"], "sft", 1.0)],
+    "WI-WP-01": [([r"tile roofing|tiles?", r"roof", r"earth", r"mud"], "sft", 1.0)],
+    "WI-FL-01": [([r"porcelain", r"floor"], "sft", 1.0), ([r"porcelain", r"tile"], "sft", 1.0)],
+    "WI-FL-02": [([r"ceramic", r"floor"], "sft", 1.0), ([r"glazed tile|ceramic tile", r"floor"], "sft", 1.0)],
+    "WI-FL-03": [([r"ceramic|glazed tile", r"dado|wall"], "sft", 1.0)],
+    "WI-FL-04": [([r"marble", r"floor"], "sft", 1.0, r"mosaic|chips|powder|terrazzo|skirting|strip")],
+    "WI-FL-07": [([r"tuff|paver"], "sft", 1.0)],
+    "WI-PT-01": [([r"plastic emulsion", r"3 coats|three coats"], "sft", 1.0), ([r"plastic emulsion", r"first coat|1st coat"], "sft", 3.0),
+                 ([r"emulsion", r"first coat|1st coat"], "sft", 3.0), ([r"emulsion"], "sft", 1.0, r"distemper")],
+    "WI-PT-02": [([r"plastic emulsion", r"3 coats|three coats"], "sft", 1.0), ([r"plastic emulsion", r"first coat|1st coat"], "sft", 3.0),
+                 ([r"emulsion", r"first coat|1st coat"], "sft", 3.0), ([r"emulsion"], "sft", 1.0, r"distemper")],
+    "WI-PT-03": [([r"weather\s*(?:shield|coat)", r"first coat|1st coat"], "sft", 2.0), ([r"weather\s*(?:shield|coat)"], "sft", 1.0)],
+    "WI-PT-04": [([r"^(?:\(?[a-z0-9]{1,3}\)\s*)?(?:preparing|painting|paint|applying)", r"enamel|synthetic", r"steel|iron|metal|grill"],
+                  "sft", 1.0), ([r"painting", r"enamel"], "sft", 1.0)],
+    "WI-PB-01": [([r"water closet|w\.\s?c\.?", r"european|commode"], "nos", 1.0)],
 }
 
 # ---- Balochistan CSR-2026 rates quoted in the two real estimates, per WI unit (rate, CSR item, source)
@@ -81,24 +110,12 @@ CSR_BAL_2026: Dict[str, Tuple[float, str, str]] = {
     "WI-PB-12": (18838.36, "25-4-a", _KHZ), "WI-PB-13": (11391.09, "25-2-a", _KHZ),
 }
 
-# Other cities while their own MRS is not imported: multiplier on the (updated) Rawalpindi MRS
-GOV_CITY_FACTOR = {"Rawalpindi": 1.00, "Islamabad": 1.03, "Lahore": 0.98, "Karachi": 1.05, "Peshawar": 1.00, "Quetta": 1.05}
-
-# Market prices in the period of the Rawalpindi MRS 2nd Bi-Annual 2024 (Jul-Dec 2024), per database unit -
-# used only to measure how much material prices moved since then. Weights = share in a typical house.
-MRS_PERIOD_BASKET = {  # mat_id: (price then, weight)
-    "CON-001": (1420.0, 0.30), "RBR-002": (262.0, 0.30), "MAS-001": (16.0, 0.20), "CON-004": (125.0, 0.10), "CON-006": (185.0, 0.10),
-}
-
-
-BASKET_NAMES = {"CON-001": "cement", "RBR-002": "steel", "MAS-001": "bricks", "CON-004": "sand", "CON-006": "crush"}
-
 
 @dataclass
 class UpdateFactors:
-    labour: float = 1.20
-    material: float = 1.00
-    basis: str = ""
+    labour_pct_year: float = 4.0
+    material_pct_year: float = 0.0
+    basis: str = "Punjab MRS 2024-2 -> 2026-2, 1,874 identical items: labour +8%, materials -2% over two years"
 
 
 @dataclass
@@ -113,81 +130,159 @@ class GovRate:
 class GovEstimate:
     lines: List[dict] = field(default_factory=list)
     subtotal: float = 0.0
-    mapped_share: float = 0.0  # share of the subtotal priced from MRS/CSR items (rest: market fallback)
+    mapped_share: float = 0.0
     extras: List[Tuple[str, float]] = field(default_factory=list)
     total: float = 0.0
     edition: str = ""
+    book: str = ""
 
 
+# ---------------------------------------------------------------------------
+# books
+# ---------------------------------------------------------------------------
 _MRS_CACHE: Dict[str, object] = {}
 
 
 def mrs_index() -> Dict[str, dict]:
-    """Imported MRS editions (cached until a file in data/rates changes)."""
+    """Imported books by district (latest edition), cached until a file in data/rates changes."""
     stamp = tuple(sorted((p.name, p.stat().st_mtime) for p in Path(RATES_DIR).glob("mrs_*.json")))
     if _MRS_CACHE.get("stamp") != stamp:
-        _MRS_CACHE["stamp"], _MRS_CACHE["data"] = stamp, load_all(RATES_DIR)
+        _MRS_CACHE["stamp"], _MRS_CACHE["data"], _MRS_CACHE["found"] = stamp, load_all(RATES_DIR), {}
     return _MRS_CACHE["data"]  # type: ignore[return-value]
 
 
-def update_factors(book, labour_factor: float = 1.20) -> UpdateFactors:
-    """Material factor from today's rate book vs the MRS-period basket."""
-    num = den = 0.0
-    parts = []
-    for mid, (then, w) in MRS_PERIOD_BASKET.items():
-        now = book.rate(mid, "Rawalpindi").rate
-        if then > 0 and now > 0:
-            num += w * now / then
-            den += w
-            parts.append(f"{BASKET_NAMES.get(mid, mid)} {now / then - 1:+.0%}")
-    mf = num / den if den else 1.0
-    return UpdateFactors(labour_factor, mf, "materials " + ", ".join(parts))
+def edition_age_years(book: dict, today: Optional[date] = None) -> float:
+    """Years between the middle of the edition's validity and today (0 for the current edition)."""
+    today = today or date.today()
+    ed = str(book.get("edition", ""))
+    m = re.match(r"(\d{4})-(\d)", ed)
+    if m:
+        y, half = int(m.group(1)), int(m.group(2))
+        mid = date(y, 4 if half == 1 else 10, 1)
+        end = date(y, 6 if half == 1 else 12, 30)
+    elif re.match(r"\d{4}$", ed):
+        mid = end = date(int(ed), 6, 1)
+    else:
+        return 0.0
+    if today <= end:
+        return 0.0
+    return (today - mid).days / 365.25
 
 
-def _items_by_key(mrs: dict) -> Dict[str, dict]:
-    out: Dict[str, dict] = {}
-    for it in mrs.get("items", []):
-        k = f"{it['chapter']}-{it['item_no']}-{it['sub']}"
-        out.setdefault(k, it)  # first occurrence (British-unit table)
-    return out
+def unit_multiplier(unit: str, base: str) -> Optional[float]:
+    """Book unit ("100 Cft.", "P.Sft", "Per Cwt.", "% Cft", "Each") -> multiplier giving the rate per WI base unit."""
+    u = (unit or "").lower().replace(",", ".").strip()
+    if not u:
+        return None
+    n = 1.0
+    m = re.match(r"^(\d+)\s*", u)
+    if m:
+        n = float(m.group(1))
+    if u.startswith("%"):
+        n = 100.0
+    if re.search(r"c\.?\s?ft|cft|cubic f", u):
+        b = "cft"
+    elif re.search(r"s\.?\s?ft|sft|sq\.?\s?f|square f", u):
+        b = "sft"
+    elif re.search(r"r\.?\s?ft|rft|running f", u):
+        b = "rft"
+    elif "cwt" in u:
+        return (1.0 / (n * CWT_KG)) if base == "kg" else None
+    elif re.search(r"ton", u):
+        return (1.0 / (n * 1000.0)) if base == "kg" else None
+    elif re.search(r"\bkg", u):
+        b = "kg"
+    elif re.search(r"each|no\b|nos|number|p\.?\s?no", u):
+        b = "nos"
+    else:
+        return None
+    return 1.0 / n if b == base else None
 
 
-def gov_rate(wi_id: str, city: str, uf: UpdateFactors, mrs_cache: Dict[str, dict]) -> Optional[GovRate]:
+def find_item(book: dict, wi_id: str) -> Optional[Tuple[dict, float]]:
+    """First item in the book (book order) whose wording matches the WI and whose unit converts."""
+    cache = _MRS_CACHE.setdefault("found", {})
+    key = (book.get("source"), book.get("edition"), wi_id)
+    if key in cache:
+        return cache[key]
+    hit = None
+    for spec in WI_SPECS.get(wi_id, []):
+        must, base, extra = spec[0], spec[1], spec[2]
+        neg = spec[3] if len(spec) > 3 else ""
+        for it in book.get("items", []):
+            d = it.get("description", "")
+            if it.get("composite") is None and it.get("labour") is None:
+                continue
+            if re.search(_EXCL, d, re.I) or (neg and re.search(neg, d, re.I)) or not all(re.search(p, d, re.I) for p in must):
+                continue
+            mult = unit_multiplier(it.get("unit", ""), base)
+            if mult is None:
+                continue
+            hit = (it, mult * extra)
+            break
+        if hit:
+            break
+    cache[key] = hit
+    return hit
+
+
+def update_factors(_book=None, labour_pct_year: float = 4.0, material_pct_year: float = 0.0) -> UpdateFactors:
+    return UpdateFactors(labour_pct_year, material_pct_year)
+
+
+def gov_rate(wi_id: str, city: str, uf: UpdateFactors, books: Optional[Dict[str, dict]] = None) -> Optional[GovRate]:
     c = city_key(city)
     if c == "Quetta" and wi_id in CSR_BAL_2026:
         rate, item, src = CSR_BAL_2026[wi_id]
         return GovRate(rate, rate * 0.25, f"Balochistan {src}", f"CSR item {item}")
-    rw = mrs_cache.get("Rawalpindi")
-    if not rw or wi_id not in MRS_MAP:
+    books = books if books is not None else mrs_index()
+    district, f = CITY_BOOK.get(c, ("Rawalpindi", 1.0))
+    book = books.get(district) or books.get("Rawalpindi")
+    if not book:
         return None
-    idx = rw.setdefault("_idx", _items_by_key(rw))
-    comp = lab = 0.0
-    keys = []
-    for key, mult in MRS_MAP[wi_id]:
-        it = idx.get(key)
-        if it is None or (it.get("composite") is None and it.get("labour") is None):
-            return None
-        L = float(it.get("labour") or 0.0)
-        C = float(it["composite"]) if it.get("composite") is not None else L  # labour-only items
-        comp += (L * uf.labour + (C - L) * uf.material) * mult
-        lab += L * uf.labour * mult
-        keys.append(key)
-    f = GOV_CITY_FACTOR.get(c, 1.0)
-    return GovRate(comp * f, lab * f, f"Punjab MRS Rawalpindi {rw['edition']} updated to today"
-                   + ("" if c == "Rawalpindi" else f", x{f:g} for {c}"), "MRS item " + " + ".join(keys))
+    hit = find_item(book, wi_id)
+    if hit is None:
+        return None
+    it, mult = hit
+    age = edition_age_years(book)
+    lf = (1 + uf.labour_pct_year / 100.0) ** age
+    mf = (1 + uf.material_pct_year / 100.0) ** age
+    L = float(it.get("labour") or 0.0)
+    C = float(it["composite"]) if it.get("composite") is not None else L  # labour-only items
+    comp = (L * lf + (C - L) * mf) * mult * f
+    src = f"{book.get('book', 'MRS')} {book['district']} {book['edition']}"
+    if age > 0.05:
+        src += f", updated {age:.1f} yr to today"
+    if f != 1.0:
+        src += f", x{f:g} for {c}"
+    return GovRate(comp, L * lf * mult * f, src, f"item {it.get('item_no')}{('-' + it['sub']) if it.get('sub') else ''} "
+                   f"({it.get('unit')}): {it.get('description', '')[:90]}")
 
 
 def government_estimate(res, city: str, uf: UpdateFactors, market_wi_cost: Dict[str, float],
                         bst_pct: float = 4.0, consultancy_pct: float = 1.0, contingency_pct: float = 1.0,
                         loose_materials: float = 0.0) -> GovEstimate:
-    """Engineer's-estimate style: BOQ qty x composite rate (+ BST, consultancy, contingency)."""
-    cache = mrs_index()
-    est = GovEstimate(edition=(cache.get("Rawalpindi") or {}).get("edition", ""))
+    """Engineer's-estimate style: BOQ qty x composite rate (+ contingency, consultancy, BST)."""
+    books = mrs_index()
+    district, _f = CITY_BOOK.get(city_key(city), ("Rawalpindi", 1.0))
+    book = books.get(district) or books.get("Rawalpindi") or {}
+    est = GovEstimate(edition=str(book.get("edition", "")), book=f"{book.get('book', '')} {book.get('district', '')}".strip())
+    if city_key(city) == "Quetta":
+        est.book, est.edition = "Balochistan CSR-2026 (rates from real estimates) + Punjab MRS Rawalpindi", str(book.get("edition", ""))
     mapped = 0.0
+    # does this book's RCC rate already include formwork / shuttering? (Punjab: "including forms, moulds, shuttering";
+    # KP: "(Except Formwork)") - then the separate formwork items must not be charged again
+    rcc = find_item(book, "WI-CN-07") if book else None
+    fw_included = bool(rcc and re.search(r"forms|mould|shuttering|formwork|centering", rcc[0]["description"], re.I)
+                       and not re.search(r"except\s+form|excluding\s+form|without\s+shutter", rcc[0]["description"], re.I))
     for w in res.scoped_work_items():
         if w.qty <= 0 or w.status in ("Option - not included", "Not required"):
             continue
-        g = gov_rate(w.wi_id, city, uf, cache)
+        if fw_included and w.wi_id.startswith("WI-FW-") and city_key(city) != "Quetta":
+            est.lines.append({"WI_ID": w.wi_id, "Description": w.description, "Unit": w.unit, "Quantity": round(w.qty, 2),
+                              "Rate": 0.0, "Amount": 0.0, "Source": "Included in the RCC rate of this book", "Item": ""})
+            continue
+        g = gov_rate(w.wi_id, city, uf, books)
         if g is not None:
             amount = w.qty * g.composite
             mapped += amount
@@ -197,8 +292,7 @@ def government_estimate(res, city: str, uf: UpdateFactors, market_wi_cost: Dict[
             rate = amount / w.qty if w.qty else 0.0
             src = "No government item - market cost of this work used"
         est.lines.append({"WI_ID": w.wi_id, "Description": w.description, "Unit": w.unit, "Quantity": round(w.qty, 2),
-                          "Rate": round(rate, 2), "Amount": round(amount, 0), "Source": src,
-                          "Item": g.detail if g else ""})
+                          "Rate": round(rate, 2), "Amount": round(amount, 0), "Source": src, "Item": g.detail if g else ""})
         est.subtotal += amount
     if loose_materials > 0:
         est.lines.append({"WI_ID": "-", "Description": "Fittings & items supplied as units (not measured work items)",

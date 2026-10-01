@@ -1,4 +1,4 @@
-# CostLens — *From plans to materials.* (v0.12.0)
+# CostLens — *From plans to materials.* (v0.12.1)
 
 A drawing-based **Material Take-Off (MTO)** tool for 5-10 marla houses in
 Pakistan. Upload the complete drawing set (CAD-exported PDFs work best); the
@@ -571,6 +571,17 @@ lines). See **[DETAILED_MTO.md](DETAILED_MTO.md)**.
 ---
 
 ## 8. Changelog
+
+**v0.12.1 — official rate books for 5 cities**
+- Imported: Punjab MRS 2nd Bi-Annual 2026 for **Rawalpindi** (also Islamabad) and **Lahore** (also Faisalabad,
+  Multan), **KP MRS 2025 1st Bi-Annual** (Peshawar) and **Sindh CSR 2024** (Karachi); Quetta keeps the Balochistan
+  CSR-2026 rates from real estimates. One importer reads all three layouts (`pricing/mrs.py`).
+- BOQ items are now found in each book by their wording and unit (`WI_SPECS` in `pricing/government.py`), so new
+  editions with renumbered items work without code changes. Coverage of the main civil items: Punjab 40/42, KP 40/42,
+  Sindh 35/42; the rest are priced at market cost and labelled.
+- Older editions are brought to today by +4%/year labour and 0%/year materials (editable) - measured from the two
+  Rawalpindi editions (2024-2 vs 2026-2, 1,874 identical items: labour +8%, material part -2%).
+- Punjab's RCC rate includes shuttering, so the formwork items are not charged twice in the government estimate.
 
 **v0.12.0 — Cost & cash flow (Pakistan)**
 - New **Step 6 · What will it cost?** (Download moves to Step 7). City: Islamabad, Rawalpindi, Lahore, Karachi,

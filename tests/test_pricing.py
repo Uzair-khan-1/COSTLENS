@@ -1,7 +1,6 @@
 """Costing: rate book & provenance, contract types, cash flow, MRS import, government estimate, quotes, price agent."""
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 
@@ -12,7 +11,7 @@ from detailed_mto import build_project, compute
 from engineering import plot_templates
 from knowledge import load_knowledge_base
 from models.schemas import ProjectInputs
-from pricing.base_rates import LABOUR, LIVE_ITEMS, R
+from pricing.base_rates import LABOUR, R
 from pricing.costing import CostSettings, compute_cost, pkr, wi_market_costs
 from pricing.ratebook import Proposal, RateBook
 from scheduling import ScheduleSettings
@@ -96,32 +95,56 @@ def test_cash_flow_follows_the_schedule(res, book):
     assert flat.escalation == 0 and flat.total < c.total
 
 
-def test_mrs_import_and_government_estimate(res, book):
-    from pricing.government import MRS_MAP, government_estimate, mrs_index, update_factors
+def test_rate_books_and_government_estimate(res, book):
+    from pricing.government import CITY_BOOK, WI_SPECS, find_item, government_estimate, mrs_index, update_factors
     idx = mrs_index()
-    assert "Rawalpindi" in idx and len(idx["Rawalpindi"]["items"]) > 3000
-    keys = {f"{i['chapter']}-{i['item_no']}-{i['sub']}" for i in idx["Rawalpindi"]["items"]}
-    missing = [k for v in MRS_MAP.values() for k, _m in v if k not in keys]
-    assert not missing, missing
+    for district, minimum in (("Rawalpindi", 38), ("Lahore", 38), ("Peshawar", 36), ("Karachi", 30)):
+        assert district in idx, district
+        b = idx[district]
+        found = [w for w in WI_SPECS if find_item(b, w)]
+        assert len(found) >= minimum, (district, len(found))
+    rw = idx["Rawalpindi"]
+    assert rw["book"] == "Punjab MRS" and rw["edition"] == "2026-2"
+    assert idx["Peshawar"]["book"] == "KP MRS" and idx["Karachi"]["book"] == "Sindh CSR"
+    rcc, mult = find_item(rw, "WI-CN-07")
+    assert "1: 2: 4" in rcc["description"] and 500 < rcc["composite"] * mult < 1200  # Rs per cft
     c = compute_cost(res, CostSettings(city="Rawalpindi"), book)
-    uf = update_factors(book)
+    uf = update_factors()
     wc, loose = wi_market_costs(c, res)
     g = government_estimate(res, "Rawalpindi", uf, wc, loose_materials=loose)
-    assert g.mapped_share > 0.3 and 0.5 < g.total / c.total < 1.6
-    assert any("BST" in n for n, _v in g.extras)
+    assert g.mapped_share > 0.3 and 0.5 < g.total / c.total < 1.6 and any("BST" in n for n, _v in g.extras)
+    # Punjab RCC includes shuttering -> formwork items are not charged twice
+    assert all(ln["Amount"] == 0 for ln in g.lines if ln["WI_ID"].startswith("WI-FW-"))
+    for city in CITY_BOOK:
+        assert government_estimate(res, city, uf, wc, loose_materials=loose).total > 0
     q = government_estimate(res, "Quetta", uf, wc, loose_materials=loose)
     assert any("CSR-2026" in ln["Source"] for ln in q.lines)
 
 
-def test_mrs_parser_on_the_real_pdf():
-    pdf = "/mnt/user-data/uploads/749929552-MRS-Rawalpindi-2nd-Bi-annual.pdf"
-    if not os.path.exists(pdf):
-        pytest.skip("MRS PDF not available")
+def test_older_editions_are_brought_to_today():
+    from datetime import date
+    from pricing.government import edition_age_years, unit_multiplier
+    assert edition_age_years({"edition": "2026-2"}, date(2026, 10, 1)) == 0
+    assert 1.3 < edition_age_years({"edition": "2025-1"}, date(2026, 10, 1)) < 1.6
+    assert 2.0 < edition_age_years({"edition": "2024"}, date(2026, 10, 1)) < 2.5
+    assert unit_multiplier("100 Cft.", "cft") == 0.01 and unit_multiplier("P.Sft", "sft") == 1.0
+    assert unit_multiplier("Per Cwt.", "kg") == pytest.approx(1 / 50.8) and unit_multiplier("% Cft", "cft") == 0.01
+    assert unit_multiplier("Each", "nos") == 1.0 and unit_multiplier("100 Sft", "cft") is None
+
+
+@pytest.mark.parametrize("pdf,book,district,edition", [
+    ("Market_Rate_System_2nd_Bi_Annual_Rawalpindi_Punjab.pdf", "Punjab MRS", "Rawalpindi", "2026-2"),
+    ("Market_Rate_System_2025__1st_Bi_Annual__KPK.pdf", "KP MRS", "Peshawar", "2025-1"),
+    ("CSR-2024-_composite_-approved_Sindh.pdf", "Sindh CSR", "Karachi", "2024"),
+])
+def test_rate_book_parser_on_real_pdfs(pdf, book, district, edition):
+    path = f"/mnt/user-data/uploads/{pdf}"
+    if not os.path.exists(path):
+        pytest.skip("rate book PDF not available")
     from pricing.mrs import parse_mrs
-    d = parse_mrs(pdf)
-    assert d["district"] == "Rawalpindi" and d["edition"] == "2024-2"
-    brick = [i for i in d["items"] if i["chapter"] == 7 and i["item_no"] == "5" and i["sub"] == "i.4"][0]
-    assert brick["unit"].startswith("100") and brick["labour"] == 11083.8 and brick["composite"] == 40207.0
+    d = parse_mrs(path)
+    assert (d["book"], d["district"], d["edition"]) == (book, district, edition)
+    assert len(d["items"]) > 2500
 
 
 def test_quote_reader_rules_and_units(kb):

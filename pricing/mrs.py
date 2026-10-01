@@ -1,14 +1,18 @@
 """
-Importer for the Punjab Finance Department "Market Rate System" (MRS) PDF - one district, one edition.
+Importer for Pakistani government rate books (PDF with a text layer):
 
-The MRS lists, for every item of work, a LABOUR rate and a COMPOSITE (labour + materials) rate in British
-and metric units. The PDF has a text layer with fixed columns:
+  * Punjab "Market Rate System" (MRS), Finance Department - one district per book, bi-annual
+      Sr. | Description | Unit | Labour | Composite | Unit | Labour | Composite | Spec | Remarks
+  * Khyber Pakhtunkhwa MRS (MRS Cell, Finance Department) - item codes like 06-07-a-03
+      Item Code | Description | Unit | Labour | Composite | Unit | Labour | Composite | Spec | Remarks
+  * Sindh Composite Schedule of Rates (CSR), Standing Rates Committee - one unit system
+      S.No. | Description | Unit | Labour | Composite | Specification | Remarks
 
-    Sr. | Description | Unit | Labour | Composite | Unit | Labour | Composite | Spec. No. | Remarks
-
-The parser reads the words with their x-positions (PyMuPDF), finds the column positions from each page's
-header row, and rebuilds items: item number, parent description, sub-item (i, ii, a, b ...), unit and rates.
-The result is saved as JSON (data/rates/mrs_<district>_<edition>.json) and used by pricing/government.py.
+The parser reads words with their x-positions (PyMuPDF), finds the columns from each page's header row
+("Unit", "Labour", "Composite"), and rebuilds ITEM BLOCKS: every line of an item's description (before and
+after the line that carries the rates) belongs to the item; sub-items (a), (i) ... get their own text. Each
+rate line becomes one record with the full description, so items can be found by their wording
+(pricing/government.py) in any edition or province.
 """
 from __future__ import annotations
 
@@ -19,9 +23,12 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 _NUM = re.compile(r"^-?\d[\d,]*\.?\d*$")
-_EDITION = re.compile(r"MRS,?\s*(\d)(?:st|nd|rd|th)\s*BI-?ANNUAL-?(\d{4})", re.I)
+_EDITION = re.compile(r"(\d)(?:st|nd|rd|th)\s*BI-?ANNUAL[-\s]*(\d{4})", re.I)
+_EDITION_KP = re.compile(r"MRS-?\s*(\d{4})\s*\(\s*(\d)\s*(?:st|nd|rd|th)?\s*BI-?ANNUAL", re.I)
 _DISTRICT = re.compile(r"DISTRICT\s+([A-Z][A-Z ]+)")
-_CHAPTER = re.compile(r"(?:chapter|chap)-?\s*(\d+)\s*\(([^)]*)\)", re.I)
+_CHAPTER = re.compile(r"(?:chapter|chap)\s*[-#:]*\s*(\d+)\s*[(:]?\s*([A-Za-z][A-Za-z &,]*)", re.I)
+_KP_CODE = re.compile(r"^\d{2}-\d{2}(?:-[a-z0-9]+)*$", re.I)
+_SUB = re.compile(r"^\(?([ivx]{1,5}|[a-z])\)\s*(.*)$")
 
 
 @dataclass
@@ -30,7 +37,7 @@ class MRSItem:
     chapter_name: str
     item_no: str
     sub: str
-    description: str  # parent description + sub-item text
+    description: str
     unit: str
     labour: Optional[float]
     composite: Optional[float]
@@ -39,15 +46,10 @@ class MRSItem:
     composite_m: Optional[float]
     page: int
 
-    @property
-    def key(self) -> str:
-        return f"{self.chapter}-{self.item_no}{('-' + self.sub) if self.sub else ''}"
-
 
 def _num(t: str) -> Optional[float]:
-    t = t.replace(",", "").strip()
     try:
-        return float(t)
+        return float(t.replace(",", "").strip())
     except ValueError:
         return None
 
@@ -62,38 +64,86 @@ def _lines(words, tol=2.5):
     return [(y, sorted(ws, key=lambda w: w[0])) for y, ws in rows]
 
 
+def _identify(first: str) -> dict:
+    t = re.sub(r"\s+", " ", first)
+    up = t.upper()
+    if "KHYBER" in up or "PESHAWAR" in up:
+        m = _EDITION_KP.search(t)
+        return {"book": "KP MRS", "province": "Khyber Pakhtunkhwa", "district": "Peshawar",
+                "edition": f"{m.group(1)}-{m.group(2)}" if m else "unknown"}
+    if "SINDH" in up:
+        y = re.search(r"SCHEDULE OF RATES\s*(\d{4})", up) or re.search(r"(20\d\d)", up)
+        return {"book": "Sindh CSR", "province": "Sindh", "district": "Karachi", "edition": y.group(1) if y else "unknown"}
+    m = _EDITION.search(t)
+    dm = re.search(r"DISTRICT\s+([A-Z][A-Z ]*?)\s*(?:\n|$)", first.upper())
+    return {"book": "Punjab MRS", "province": "Punjab", "district": dm.group(1).strip().title() if dm else "Unknown",
+            "edition": f"{m.group(2)}-{m.group(1)}" if m else "unknown"}
+
+
 def parse_mrs(pdf_path: str) -> dict:
     import pymupdf
     doc = pymupdf.open(pdf_path)
-    first = "\n".join(doc[i].get_text() for i in range(min(3, len(doc))))
-    m = _EDITION.search(first)
-    edition = f"{m.group(2)}-{m.group(1)}" if m else "unknown"
-    dm = _DISTRICT.search(first)
-    district = dm.group(1).strip().title() if dm else "Unknown"
+    first = "\n".join(doc[i].get_text() for i in range(min(4, len(doc))))
+    meta = _identify(first)
     items: List[MRSItem] = []
     chapter, chapter_name = 0, ""
-    item_no, parent, sub, sub_text = "", "", "", ""
+    block: Optional[dict] = None
+    last_unit = [""]
+
+    def flush():
+        if not block or not block["rates"]:
+            return
+        pre = re.sub(r"\s+", " ", " ".join(block["pre"])).strip()
+        if len(pre) > 360:  # long general wording: keep the start; the specific parts (sub-item, ratio) must survive
+            pre = pre[:360] + "..."
+        for r in block["rates"]:
+            parts = [pre]
+            if r["sub"]:
+                parts.append(" ".join(block["subs"].get(r["sub"], [])))
+            elif not block["subs"]:
+                parts.append(" ".join(block["post"]))  # single item: text after the rate line belongs to it
+            if r["label"]:
+                parts.append(r["label"])
+            desc = re.sub(r"\s+", " ", " - ".join(p for p in parts if p)).strip()
+            same = [i for i in items if i.chapter == block["chapter"] and i.item_no == block["no"]]
+            sub = r["sub"]
+            if any(i.sub == sub or i.sub.startswith(sub + ".") for i in same):
+                n = sum(1 for i in same if i.sub == sub or i.sub.startswith(sub + "."))
+                sub = f"{sub}.{n}" if sub else str(n)
+            items.append(MRSItem(block["chapter"], block["chapter_name"], block["no"], sub, desc[:900], r["unit"], r["lab"],
+                                 r["comp"], r["unit_m"], r["lab_m"], r["comp_m"], r["page"]))
+
     for pno, page in enumerate(doc, 1):
         words = page.get_text("words")
-        foot = [w for w in words if w[1] > page.rect.height * 0.9]
-        cm = _CHAPTER.search(" ".join(w[4] for w in foot))
+        h = page.rect.height
+        cm = _CHAPTER.search(" ".join(w[4] for w in words if w[1] > h * 0.88 or w[1] < h * 0.18))
         if cm:
-            chapter, chapter_name = int(cm.group(1)), cm.group(2).strip()
+            chapter, chapter_name = int(cm.group(1)), cm.group(2).strip()[:40]
         hdr = [w for w in words if w[4] in ("Labour", "Composite", "Unit")]
+        labs = [w for w in hdr if w[4] == "Labour"]
+        if labs:  # the header row only - "Composite" also appears inside remarks text
+            y0 = min(w[1] for w in labs)
+            hdr = [w for w in hdr if abs(w[1] - y0) < 8]
         lab = sorted(w[0] for w in hdr if w[4] == "Labour")
         comp = sorted(w[0] for w in hdr if w[4] == "Composite")
         unit = sorted(w[0] for w in hdr if w[4] == "Unit")
-        if len(lab) < 2 or len(comp) < 2:
+        if not lab or not comp:
             continue
-        head_y = max(w[3] for w in hdr)
-        x_unit = unit[0] - 12 if unit else lab[0] - 45
-        x_lab, x_comp = lab[0] - 12, comp[0] - 8
-        x_unit_m = unit[1] - 10 if len(unit) > 1 else comp[0] + 45
-        x_lab_m, x_comp_m = lab[1] - 12, comp[1] - 8
-        x_spec = x_comp_m + 60
-        for _y, ws in _lines([w for w in words if w[1] > head_y + 2 and w[1] < page.rect.height * 0.9]):
-            desc = [w[4] for w in ws if w[0] < x_unit]
-            cols = {"unit": [], "lab": [], "comp": [], "unit_m": [], "lab_m": [], "comp_m": []}
+        head_y = max(w[3] for w in hdr if w[4] in ("Labour", "Composite"))
+        dx = [w[0] for w in words if w[4] == "Description" and w[1] < head_y + 5]
+        x_item = (min(dx) - 2) if dx else 60  # item numbers sit left of the description column
+        two = len(lab) >= 2 and len(comp) >= 2
+        x_unit = (unit[0] - 14) if unit else lab[0] - 50
+        x_lab, x_comp = lab[0] - 14, comp[0] - 10
+        if two:
+            x_unit_m = (unit[1] - 12) if len(unit) > 1 else comp[0] + 45
+            x_lab_m, x_comp_m = lab[1] - 14, comp[1] - 10
+        else:
+            x_unit_m = x_lab_m = x_comp_m = comp[0] + 55
+        x_end = (x_comp_m if two else x_comp) + 62
+        for _y, ws in _lines([w for w in words if head_y + 2 < w[1] < h * 0.93]):
+            desc_w = [w for w in ws if w[0] < x_unit]
+            cols: Dict[str, List[str]] = {k: [] for k in ("unit", "lab", "comp", "unit_m", "lab_m", "comp_m")}
             for w in ws:
                 x = w[0]
                 if x < x_unit:
@@ -102,53 +152,55 @@ def parse_mrs(pdf_path: str) -> dict:
                     cols["unit"].append(w[4])
                 elif x < x_comp:
                     cols["lab"].append(w[4])
-                elif x < x_unit_m:
+                elif not two and x < x_end:
                     cols["comp"].append(w[4])
-                elif x < x_lab_m:
+                elif two and x < x_unit_m:
+                    cols["comp"].append(w[4])
+                elif two and x < x_lab_m:
                     cols["unit_m"].append(w[4])
-                elif x < x_comp_m:
+                elif two and x < x_comp_m:
                     cols["lab_m"].append(w[4])
-                elif x < x_spec:
+                elif two and x < x_end:
                     cols["comp_m"].append(w[4])
-            text = " ".join(desc).strip()
-            lab_v = next((_num(t) for t in cols["lab"] if _NUM.match(t.replace(",", ""))), None)
-            comp_v = next((_num(t) for t in cols["comp"] if _NUM.match(t.replace(",", ""))), None)
+            toks = [w[4] for w in desc_w]
+
+            def num(k):
+                return next((_num(t) for t in cols[k] if _NUM.match(t.replace(",", ""))), None)
+
+            lab_v, comp_v = num("lab"), num("comp")
             has_rate = lab_v is not None or comp_v is not None
-            row_label = ""
-            # new item: line starts with its number at the left margin
-            if desc and re.fullmatch(r"\d{1,3}", desc[0]) and ws[0][0] < 40:
-                item_no, parent, sub, sub_text = desc[0], " ".join(desc[1:]), "", ""
-            elif desc:
-                sm = re.match(r"^\(?([ivx]{1,5}|[a-z])\)\s*(.*)$", text)
-                if sm:
-                    sub, sub_text = sm.group(1), sm.group(2)
-                elif has_rate:
-                    row_label = text  # e.g. "Ratio 1:4" - belongs to this rate line only
-                elif sub:
-                    sub_text = (sub_text + " " + text).strip()
-                else:
-                    parent = (parent + " " + text).strip()
-            if not has_rate or not item_no:
+            if toks and ws[0][0] < x_item and (re.fullmatch(r"\d{1,3}", toks[0]) or _KP_CODE.match(toks[0])):
+                flush()
+                block = {"no": toks[0], "chapter": chapter, "chapter_name": chapter_name, "pre": [" ".join(toks[1:])],
+                         "post": [], "subs": {}, "sub": "", "rates": []}
+                toks = []
+            if block is None:
                 continue
-            lab_m = next((_num(t) for t in cols["lab_m"] if _NUM.match(t.replace(",", ""))), None)
-            comp_m = next((_num(t) for t in cols["comp_m"] if _NUM.match(t.replace(",", ""))), None)
-            u = " ".join(cols["unit"]).strip()  # keep "100" in "100 Sft." - it is part of the unit
-            um = " ".join(cols["unit_m"]).strip()
-            parts = [parent]
-            if sub:
-                parts.append(sub_text)
-            if row_label:
-                parts.append(row_label)
-            description = " - ".join(x for x in parts if x).strip()
-            same = [i for i in items if i.chapter == chapter and i.item_no == item_no]
-            key_sub = sub
-            if any(i.sub == sub or i.sub.startswith(sub + ".") for i in same) and (row_label or not sub):
-                key_sub = f"{sub}.{sum(1 for i in same if i.sub == sub or i.sub.startswith(sub + '.'))}" if sub \
-                    else str(len(same))
-            items.append(MRSItem(chapter, chapter_name, item_no, key_sub, re.sub(r"\s+", " ", description)[:400],
-                                 u or "", lab_v, comp_v, um or "", lab_m, comp_m, pno))
-    return {"source": Path(pdf_path).name, "district": district, "edition": edition,
-            "items": [asdict(i) for i in items]}
+            text = " ".join(toks).strip()
+            label = ""
+            if text:
+                sm = _SUB.match(text)
+                if sm:
+                    block["sub"] = sm.group(1)
+                    block["subs"].setdefault(block["sub"], []).append(sm.group(2))
+                elif has_rate and (block["rates"] or block["sub"]):
+                    label = text  # "Ratio 1:4" next to its own rates
+                elif block["sub"]:
+                    block["subs"][block["sub"]].append(text)
+                elif block["rates"]:
+                    block["post"].append(text)
+                else:
+                    block["pre"].append(text)
+            if has_rate:
+                u = " ".join(cols["unit"]).strip()
+                if re.fullmatch(r"(?i)-?do-?|ditto|\"", u) or (not u and block["rates"]):
+                    u = block["rates"][-1]["unit"] if block["rates"] else last_unit[0]
+                last_unit[0] = u or last_unit[0]
+                block["rates"].append({"sub": block["sub"], "label": label, "unit": u,
+                                       "lab": lab_v, "comp": comp_v, "unit_m": " ".join(cols["unit_m"]).strip(),
+                                       "lab_m": num("lab_m"), "comp_m": num("comp_m"), "page": pno})
+    flush()
+    return {"source": Path(pdf_path).name, **meta, "items": [asdict(i) for i in items]}
 
 
 def save(data: dict, folder: Path) -> Path:
@@ -172,8 +224,8 @@ def load_all(folder: Path) -> Dict[str, dict]:
     return out
 
 
-if __name__ == "__main__":  # python -m pricing.mrs path/to/MRS.pdf
+if __name__ == "__main__":  # python -m pricing.mrs path/to/book.pdf
     import sys
     data = parse_mrs(sys.argv[1])
     path = save(data, Path(__file__).resolve().parent.parent / "data" / "rates")
-    print(f"{data['district']} {data['edition']}: {len(data['items'])} items -> {path}")
+    print(f"{data.get('book')} {data['district']} {data['edition']}: {len(data['items'])} items -> {path}")
