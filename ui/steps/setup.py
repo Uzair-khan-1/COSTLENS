@@ -21,7 +21,8 @@ from utils import units
 
 CHOICES = {
     "drawings": ("Architect's drawings", "A PDF drawing set (AutoCAD export) - the most accurate result.", ill.card_cad),
-    "sketch": ("A hand sketch or photo", "A rough plan on paper or a photo - we ask a few questions to complete it.", ill.card_sketch),
+    "sketch": ("Hand sketch, photo or simple plan", "A plan drawn on paper, a photo of it, or a simple house plan "
+               "(e.g. from a society brochure) - we ask a few questions to complete it.", ill.card_sketch),
     "idea": ("Just an idea", "No drawing yet? Describe the house (e.g. 5 marla, 4 bedrooms) and answer simple questions.", ill.card_idea),
 }
 GAS_LABELS = {"SNGPL": "Piped gas (Sui gas)", "LPG": "LPG cylinders", "None": "No gas (electric)"}
@@ -181,7 +182,7 @@ def step_1():
     label = "Continue \u2192 read my drawings" if input_mode == "drawings" else "Continue \u2192 describe my house"
     no_files = input_mode == "drawings" and not uploaded_files_with_tags
     if no_files:
-        st.info("\U0001f4c2 Upload your drawings to continue - or choose 'A hand sketch or photo' / 'Just an idea' above.")
+        st.info("\U0001f4c2 Upload your drawings to continue - or choose 'Hand sketch, photo or simple plan' / 'Just an idea' above.")
     submitted = st.button(label, width="stretch", type="primary", disabled=no_files)
 
     if submitted:

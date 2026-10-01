@@ -97,7 +97,7 @@ def readiness_now(pi, params):
     from detailed_mto.readiness import evaluate
     p = current_project(pi, params)
     return evaluate(p, set(st.session_state.get("scope_sel") or ()), dict(st.session_state.get("spec_answers") or {}),
-                    bool(st.session_state.get("scope_confirmed")))
+                    bool(st.session_state.get("scope_confirmed")), suggested=set(st.session_state.get("spec_suggested") or ()))
 
 
 def estimate_allowed(pi, params) -> tuple:

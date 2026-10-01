@@ -157,20 +157,20 @@ def stat_cards_html(items: List[Tuple[str, str, str, str]]) -> str:
     cols = n if n <= 5 else math.ceil(n / math.ceil(n / 5))
     basis = f"calc({100 / max(cols, 1):.3f}% - 10px)"
     cards = "".join(
-        f'<div style="flex:1 1 {basis};min-width:140px;background:white;border:1px solid #E2E8F0;border-radius:14px;'
+        f'<div style="flex:1 1 {basis};min-width:140px;background:#172843;border:1px solid rgba(255,255,255,0.09);border-radius:14px;'
         f'padding:12px 14px;box-shadow:0 1px 3px rgba(15,23,42,.06)">'
         f'<div style="font-size:26px;line-height:1">{e}</div>'
-        f'<div style="font-size:12.5px;color:#64748B;margin-top:6px">{escape(t)}</div>'
-        f'<div style="font-size:21px;font-weight:700;color:{NAVY};margin-top:2px">{escape(v)}</div>'
-        f'<div style="font-size:11.5px;color:#94A3B8">{escape(s)}</div></div>'
+        f'<div style="font-size:12.5px;color:#A9B9D3;margin-top:6px">{escape(t)}</div>'
+        f'<div style="font-size:21px;font-weight:700;color:#FFFFFF;margin-top:2px">{escape(v)}</div>'
+        f'<div style="font-size:11.5px;color:#8EA2C2">{escape(s)}</div></div>'
         for e, t, v, s in items)
     return f'<div style="display:flex;flex-wrap:wrap;gap:10px;margin:6px 0 12px 0">{cards}</div>'
 
 
 def tip_box_html(title: str, lines: List[str], urdu: str = "") -> str:
     lis = "".join(f"<li style='margin:2px 0'>{escape(x)}</li>" for x in lines)
-    ur = (f"<div dir='rtl' style='font-size:13px;color:#475569;margin-top:4px;font-family:\"Noto Nastaliq Urdu\",serif'>"
+    ur = (f"<div dir='rtl' style='font-size:13px;color:#A9B9D3;margin-top:4px;font-family:\"Noto Nastaliq Urdu\",serif'>"
           f"{escape(urdu)}</div>") if urdu else ""
-    return (f'<div style="background:#F0FDFA;border:1px solid #99F6E4;border-left:5px solid {TEAL};border-radius:12px;'
-            f'padding:10px 14px;margin:4px 0 14px 0"><div style="font-weight:700;color:{NAVY}">\U0001f4a1 {escape(title)}</div>'
-            f'<ul style="margin:6px 0 0 18px;padding:0;color:#334155;font-size:14px">{lis}</ul>{ur}</div>')
+    return (f'<div style="background:rgba(59,155,232,0.10);border:1px solid rgba(59,155,232,0.35);border-left:5px solid #14B8A6;'
+            f'border-radius:12px;padding:10px 14px;margin:4px 0 14px 0"><div style="font-weight:700;color:#FFFFFF">\U0001f4a1 {escape(title)}</div>'
+            f'<ul style="margin:6px 0 0 18px;padding:0;color:#D5E0F0;font-size:14px">{lis}</ul>{ur}</div>')

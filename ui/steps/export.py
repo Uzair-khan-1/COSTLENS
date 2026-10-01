@@ -36,7 +36,8 @@ def step_5():
             "dmto_overrides", "dmto_floors", "package_facts", "dmto_scan", "uploaded_signature", "drawing_filled",
             "brief", "copilot_scenarios", "copilot_msgs", "uploaded_files", "step", "max_step",
                     "scope_sel", "scope_confirmed", "spec_answers", "assumptions_ack", "plot_dims_user",
-                    "sched_settings", "sched_target", "sched_baseline", "cost_settings")
+                    "sched_settings", "sched_target", "sched_baseline", "cost_settings",
+                    "spec_custom", "spec_suggested", "scope_not_needed")
     snap = {k: st.session_state.get(k) for k in keys}
     cost = gov = None
     try:

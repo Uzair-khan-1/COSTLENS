@@ -33,8 +33,8 @@ html, body, [class*="css"] {{
 /* ---------------------------------------------------------------- *
  * App background
  * ---------------------------------------------------------------- */
-[data-testid="stAppViewContainer"] > .main {{
-    background: linear-gradient(180deg, {config.BRAND_BG} 0%, #FFFFFF 360px);
+[data-testid="stAppViewContainer"], [data-testid="stMain"] {{
+    background: radial-gradient(1200px 500px at 70% -10%, #1B3157 0%, {config.BRAND_BG} 55%) !important;
 }}
 
 /* ---------------------------------------------------------------- *
@@ -48,17 +48,18 @@ html, body, [class*="css"] {{
     gap: 10px 24px;
     padding: 12px 24px;
     margin: -1rem -1rem 1.5rem -1rem;
-    background: #FFFFFF;
+    background: {config.CARD_BG};
     border-radius: 0 0 18px 18px;
     border-bottom: 4px solid transparent;
     border-image: linear-gradient(90deg, {config.BRAND_NAVY}, {config.BRAND_TEAL} 55%, #14B8A6, {config.BRAND_GOLD}) 1;
-    box-shadow: 0 6px 24px rgba(27, 47, 91, 0.10);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
 }}
 .cl-hero img {{ height: 74px; display: block; }}
 .cl-hero-text p {{
-    color: #5B6B85 !important;
-    font-size: 0.92rem !important;
-    max-width: 330px;
+    color: {config.TEXT_MUTED} !important;
+    font-size: 1.02rem !important;
+    max-width: 360px;
+    text-align: right;
     margin: 0 !important;
     font-weight: 500;
     line-height: 1.35;
@@ -73,22 +74,22 @@ h1, h2, h3 {{ font-weight: 700; }}
 /* ---------------------------------------------------------------- *
  * Buttons
  * ---------------------------------------------------------------- */
-.stButton > button,
-.stDownloadButton > button,
+.stButton button,
+.stDownloadButton button,
 [data-testid="stFormSubmitButton"] button {{
     border-radius: 10px;
     font-weight: 600;
-    border: 1px solid rgba(11, 30, 61, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.14);
     transition: transform 0.06s ease-in-out, box-shadow 0.15s ease-in-out;
 }}
-.stButton > button:hover,
-.stDownloadButton > button:hover,
+.stButton button:hover,
+.stDownloadButton button:hover,
 [data-testid="stFormSubmitButton"] button:hover {{
     transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(13, 148, 136, 0.25);
+    box-shadow: 0 4px 16px rgba(59, 155, 232, 0.35);
     border-color: {config.BRAND_TEAL};
 }}
-.stButton > button[kind="primary"],
+.stButton button[kind="primary"],
 [data-testid="stFormSubmitButton"] button[kind="primary"] {{
     background: linear-gradient(120deg, {config.BRAND_TEAL} 0%, #14B8A6 100%);
     border: none;
@@ -99,7 +100,7 @@ h1, h2, h3 {{ font-weight: 700; }}
  * ---------------------------------------------------------------- */
 [data-testid="stMetric"] {{
     background: rgba(127, 127, 127, 0.06);  /* neutral tint: readable in light and dark themes */
-    border: 1px solid rgba(11, 30, 61, 0.08);
+    border: 1px solid {config.CARD_BORDER};
     border-left: 4px solid {config.BRAND_TEAL};
     border-radius: 12px;
     padding: 14px 18px;
@@ -112,10 +113,11 @@ h1, h2, h3 {{ font-weight: 700; }}
  * Expanders (Steps 3 / 4 / 5 rely on these heavily)
  * ---------------------------------------------------------------- */
 [data-testid="stExpander"] {{
-    border: 1px solid rgba(11, 30, 61, 0.08);
+    border: 1px solid {config.CARD_BORDER};
     border-radius: 12px;
-    box-shadow: 0 1px 6px rgba(11, 30, 61, 0.04);
+    background: rgba(23, 40, 67, 0.55);
 }}
+[data-testid="stVerticalBlockBorderWrapper"] {{ border-color: {config.CARD_BORDER} !important; }}
 
 /* ---------------------------------------------------------------- *
  * Sidebar logo (st.logo) - Streamlit renders this quite small by
@@ -143,16 +145,17 @@ h1, h2, h3 {{ font-weight: 700; }}
  * Sidebar
  * ---------------------------------------------------------------- */
 [data-testid="stSidebar"] {{
-    background: linear-gradient(180deg, {config.BRAND_NAVY} 0%, {config.BRAND_NAVY_LIGHT} 100%);
+    background: linear-gradient(180deg, #13233F 0%, #0B1528 100%);
+    border-right: 1px solid {config.CARD_BORDER};
 }}
 [data-testid="stSidebar"] * {{ color: #E8EEF5 !important; }}
 [data-testid="stSidebar"] hr {{ border-color: rgba(255, 255, 255, 0.15); }}
-[data-testid="stSidebar"] .stButton > button {{
+[data-testid="stSidebar"] .stButton button {{
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid rgba(255, 255, 255, 0.18);
     color: #FFFFFF !important;
 }}
-[data-testid="stSidebar"] .stButton > button:hover {{
+[data-testid="stSidebar"] .stButton button:hover {{
     background: {config.BRAND_TEAL};
     border-color: {config.BRAND_TEAL};
 }}
@@ -160,23 +163,30 @@ h1, h2, h3 {{ font-weight: 700; }}
 /* ---------------------------------------------------------------- *
  * Sidebar step navigation (clickable step buttons)
  * ---------------------------------------------------------------- */
-.st-key-cl_step_nav .stButton > button {{
+.st-key-cl_step_nav .stButton button {{
     width: 100%;
-    justify-content: flex-start;
-    text-align: left;
-    padding: 0.45rem 0.8rem;
-    margin-bottom: 2px;
+    display: flex !important;
+    justify-content: flex-start !important;
+    text-align: left !important;
+    padding: 0.5rem 0.9rem !important;
+    margin-bottom: 3px;
     border-radius: 10px;
 }}
-.st-key-cl_step_nav .stButton > button > div,
-.st-key-cl_step_nav .stButton > button [data-testid="stMarkdownContainer"] {{ justify-content: flex-start; width: 100%; }}
-.st-key-cl_step_nav .stButton > button p {{ text-align: left; font-weight: 600; }}
-.st-key-cl_step_nav .stButton > button[kind="primary"] {{
+.st-key-cl_step_nav .stButton button * {{
+    justify-content: flex-start !important;
+    text-align: left !important;
+    margin-left: 0 !important;
+}}
+.st-key-cl_step_nav .stButton button > div,
+.st-key-cl_step_nav .stButton button [data-testid="stMarkdownContainer"] {{ width: 100% !important; display: flex !important; }}
+.st-key-cl_step_nav [data-testid="stTooltipHoverTarget"] {{ justify-content: flex-start !important; }}
+.st-key-cl_step_nav .stButton button p {{ font-weight: 600; white-space: nowrap; }}
+.st-key-cl_step_nav .stButton button[kind="primary"] {{
     background: {config.BRAND_GOLD} !important;
     border: none !important;
 }}
-.st-key-cl_step_nav .stButton > button[kind="primary"] p {{ color: {config.BRAND_NAVY} !important; }}
-.st-key-cl_step_nav .stButton > button:disabled {{ opacity: 0.35; }}
+.st-key-cl_step_nav .stButton button[kind="primary"] p {{ color: {config.BRAND_NAVY} !important; }}
+.st-key-cl_step_nav .stButton button:disabled {{ opacity: 0.55; }}
 [data-testid="stMain"], section.main {{ overflow-anchor: none; }}
 /* light buttons inside the dark sidebar (download / file uploader) need dark text */
 [data-testid="stSidebar"] .stDownloadButton button p,
@@ -234,7 +244,7 @@ def render_hero() -> None:
     """Branded header: the full-colour CostLens logo on a light card with the logo's blue-to-teal accent line."""
     logo_html = f"<h1 style='margin:0'>{config.APP_NAME}</h1>"
     try:
-        with open(config.LOGO_HORIZONTAL_PATH, "rb") as fh:
+        with open(config.LOGO_HORIZONTAL_ON_DARK_PATH, "rb") as fh:
             b64 = base64.b64encode(fh.read()).decode("ascii")
         logo_html = f'<img src="data:image/png;base64,{b64}" alt="{config.APP_NAME} - materials, cost, schedule" />'
     except OSError:
@@ -243,7 +253,7 @@ def render_hero() -> None:
         f"""
         <div class="cl-hero">
             {logo_html}
-            <div class="cl-hero-text"><p>From your house drawings to the materials, the cost and the building schedule.</p></div>
+            <div class="cl-hero-text"><p>Your house plan in &rarr;<br><b style="color:#FFFFFF">what to buy, what it costs, when it&rsquo;s ready.</b></p></div>
         </div>
         """,
         unsafe_allow_html=True,

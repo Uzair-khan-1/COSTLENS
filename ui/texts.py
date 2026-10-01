@@ -16,7 +16,7 @@ STEP_TITLES = {
 STEP_TITLE_SKETCH_2 = ("Your requirements", "آپ کی ضروریات")
 
 TIPS = {
-    1: (["Choose what you have: architect's drawings, a hand sketch, or just an idea.",
+    1: (["Choose what you have: architect's drawings, a hand sketch / photo / simple plan, or just an idea.",
          "Pick your city. The plot size is read from your drawings - you don't have to enter it.",
          "Nothing is guessed: whatever is not on your drawings is asked in simple questions later."],
         "جو آپ کے پاس ہے وہ منتخب کریں اور شہر چنیں - پلاٹ کا سائز نقشے سے لیا جائے گا"),

@@ -210,7 +210,7 @@ def _render_plot_check(facts, pi) -> bool:
         c3.markdown(f"<div style='padding-top:30px'>= {pw * pd_:,.0f} sq ft \u2248 <b>{pw * pd_ / msq:.1f} marla</b></div>",
                     unsafe_allow_html=True)
         return True
-    c3.markdown("<div style='padding-top:30px;color:#C2410C'>Both values are needed to continue.</div>", unsafe_allow_html=True)
+    c3.markdown("<div style='padding-top:30px;color:#FDBA74'>Both values are needed to continue.</div>", unsafe_allow_html=True)
     return False
 
 
