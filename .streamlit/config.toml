@@ -1,0 +1,13 @@
+[theme]
+base = "light"
+primaryColor = "#0D9488"
+backgroundColor = "#F4F7FB"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#0B1E3D"
+font = "sans serif"
+
+[server]
+maxUploadSize = 25
+
+[client]
+toolbarMode = "minimal"   # hide developer menus (Deploy etc.) from homeowners
