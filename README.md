@@ -1,4 +1,4 @@
-# CostLens — *Materials • Cost • Schedule* (v0.14.0)
+# CostLens — *Materials • Cost • Schedule* (v0.15.0)
 
 A drawing-based **Material Take-Off (MTO)** tool for 5-10 marla houses in
 Pakistan. Upload the complete drawing set (CAD-exported PDFs work best); the
@@ -571,6 +571,16 @@ lines). See **[DETAILED_MTO.md](DETAILED_MTO.md)**.
 ---
 
 ## 8. Changelog
+
+**v0.15.0 — dark theme, clearer logo, easier questions**
+- Dark theme matching the sidebar; cards, tips and header restyled; sidebar steps left-aligned.
+- Logo redesigned: a brick house in the lens (materials), a Rs coin (cost) and a calendar with a tick (schedule).
+- Header: "Your house plan in -> what to buy, what it costs, when it's ready." Step 1 card: "Hand sketch, photo or
+  simple plan".
+- Step 3: every question starts with the most common answer pre-selected (marked suggested; listed in the
+  assumptions); questions stay in place when answered; "Type my own number" for room height, geysers, counter
+  length, wardrobes, lights, sockets, fans, ACs, TV points, underground tank (gallons), boundary wall, paving and
+  cladding - all feed the materials, BOQ, cost and schedule; "Not needed" can be undone in the same box.
 
 **v0.14.0 — new logo, AI built in, "Not needed" answers, Excel opens cleanly**
 - New CostLens logo (vector, `assets/source/`): lens with building blocks, a Rs coin and a calendar; header, sidebar,
