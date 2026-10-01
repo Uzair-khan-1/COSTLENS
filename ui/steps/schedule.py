@@ -12,7 +12,7 @@ def step_schedule():
     from ui.guide import step_header
     from ui.schedule_views import render_schedule_tab
 
-    step_header(5)
+    step_header(6)
     pi: ProjectInputs = st.session_state["project_inputs"]
     res = mto_views.ensure_current_result(pi, st.session_state.get("extracted_params"))
     if res is None:
@@ -26,10 +26,10 @@ def step_schedule():
 
     c1, c2 = st.columns(2)
     with c1:
-        if st.button("← Back to materials", key="sched_back_to_4"):
-            go_to_step(4)
+        if st.button("← Back to BOQ & cost", key="sched_back_to_5"):
+            go_to_step(5)
             st.rerun()
     with c2:
-        if st.button("Next: what will it cost? →", type="primary", width="stretch", key="sched_next_6"):
-            go_to_step(6)
+        if st.button("Next: download & share →", type="primary", width="stretch", key="sched_next_7"):
+            go_to_step(7)
             st.rerun()

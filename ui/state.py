@@ -158,3 +158,16 @@ def clear_drawing_derived_state():
 def go_to_step(n: int):
     st.session_state["step"] = n
     st.session_state["max_step"] = max(int(st.session_state.get("max_step", 1) or 1), n)
+
+
+def display_name() -> str:
+    """The project's name as shown in files and titles ('My house' when the owner left it empty)."""
+    pi = st.session_state.get("project_inputs")
+    n = (getattr(pi, "project_name", "") or "").strip()
+    return n if n and n != "Untitled Project" else "My house"
+
+
+def file_stem() -> str:
+    """Safe, consistent start of every download's file name, e.g. 'My_house'."""
+    import re
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", display_name()).strip("_") or "My_house"

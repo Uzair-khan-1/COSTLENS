@@ -63,8 +63,9 @@ def card_idea() -> str:
 # ---------------------------------------------------------------------------
 def how_it_works() -> str:
     steps = [("Your project", "drawings & city", "plot"), ("Your design", "we read it", "doc"),
-             ("Your scope", "what you want", "check"), ("Materials & BOQ", "what to buy", "list"),
-             ("Time & cost", "schedule & cash flow", "check"), ("Download", "Excel, PDF, WhatsApp", "down")]
+             ("Your scope", "what you want", "check"), ("Materials", "what to buy", "list"),
+             ("BOQ & cost", "work & money", "list"), ("Schedule", "time & workers", "check"),
+             ("Download", "Excel, PDF", "down")]
     icons = {
         "plot": '<rect x="-16" y="-12" width="32" height="24" fill="#E6F4E1" stroke="{c}" stroke-width="2"/><rect x="-9" y="-6" width="14" height="12" fill="{c}"/>',
         "doc": '<rect x="-12" y="-15" width="24" height="30" rx="2" fill="white" stroke="{c}" stroke-width="2"/><path d="M-7 -6 H7 M-7 0 H7 M-7 6 H3" stroke="{c}" stroke-width="2"/>',
@@ -75,15 +76,15 @@ def how_it_works() -> str:
     parts = []
     n = len(steps)
     for i, (t, sub, ic) in enumerate(steps):
-        x = 55 + i * 122
+        x = 52 + i * 103
         parts.append(f'<g transform="translate({x},40)"><circle r="28" fill="{SKY}"/>{icons[ic].format(c=NAVY)}</g>')
         parts.append(f'<circle cx="{x + 20}" cy="18" r="10" fill="{GOLD}"/><text x="{x + 20}" y="22" font-size="11" '
                      f'font-weight="bold" text-anchor="middle" fill="{NAVY}">{i + 1}</text>')
         parts.append(f'<text x="{x}" y="86" font-size="13" font-weight="bold" text-anchor="middle" fill="{NAVY}">{escape(t)}</text>')
         parts.append(f'<text x="{x}" y="102" font-size="11" text-anchor="middle" fill="#64748B">{escape(sub)}</text>')
         if i < n - 1:
-            parts.append(f'<path d="M{x + 34} 40 H{x + 84}" stroke="{GREY}" stroke-width="2" stroke-dasharray="4 4"/>'
-                         f'<polygon points="{x + 84},35 {x + 91},40 {x + 84},45" fill="{GREY}"/>')
+            parts.append(f'<path d="M{x + 32} 40 H{x + 66}" stroke="{GREY}" stroke-width="2" stroke-dasharray="4 4"/>'
+                         f'<polygon points="{x + 66},35 {x + 72},40 {x + 66},45" fill="{GREY}"/>')
     return _svg(720, 112, "".join(parts), 760)
 
 
@@ -149,9 +150,14 @@ MATERIAL_ICON = {"Cement": "\U0001f9f1", "Steel": "\U0001f529", "Bricks": "\U000
 
 
 def stat_cards_html(items: List[Tuple[str, str, str, str]]) -> str:
-    """items: (emoji, title, value, sub) -> responsive card grid (HTML)."""
+    """items: (emoji, title, value, sub) -> responsive card grid (HTML). Rows are balanced (6 cards = 3 + 3), so no
+    card is left alone and stretched across a row; on a phone they wrap to fit."""
+    import math
+    n = len(items)
+    cols = n if n <= 5 else math.ceil(n / math.ceil(n / 5))
+    basis = f"calc({100 / max(cols, 1):.3f}% - 10px)"
     cards = "".join(
-        f'<div style="flex:1 1 150px;min-width:140px;background:white;border:1px solid #E2E8F0;border-radius:14px;'
+        f'<div style="flex:1 1 {basis};min-width:140px;background:white;border:1px solid #E2E8F0;border-radius:14px;'
         f'padding:12px 14px;box-shadow:0 1px 3px rgba(15,23,42,.06)">'
         f'<div style="font-size:26px;line-height:1">{e}</div>'
         f'<div style="font-size:12.5px;color:#64748B;margin-top:6px">{escape(t)}</div>'

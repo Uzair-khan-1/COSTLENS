@@ -1,4 +1,4 @@
-# CostLens — *From plans to materials.* (v0.12.1)
+# CostLens — *From plans to materials.* (v0.13.0)
 
 A drawing-based **Material Take-Off (MTO)** tool for 5-10 marla houses in
 Pakistan. Upload the complete drawing set (CAD-exported PDFs work best); the
@@ -571,6 +571,19 @@ lines). See **[DETAILED_MTO.md](DETAILED_MTO.md)**.
 ---
 
 ## 8. Changelog
+
+**v0.13.0 — easier for owners: clearer order, consistent numbers, one-click downloads**
+- New order: 4 Materials (MTO) -> 5 Bill of Quantities & cost (priced BOQ first) -> 6 Schedule, workers & money per
+  month -> 7 Download. The guide strip and sidebar show the same 7 steps.
+- Same numbers everywhere: covered area (Step 2 = Step 3), material cards = shopping list (rounded up), the schedule
+  file, the screen and the cost cash flow all use the same target duration; one project name in all files.
+- Step 2: plot size message without code, notes from the drawings in a closed box, AI text box optional.
+- Step 3: questions already answered from the drawings are collapsed; assumptions in plain rounded numbers.
+- Step 5: priced BOQ tab; a realistic likely range; plain wording about where prices come from; admin tools moved
+  to a closed box at the bottom; cash-flow bars aligned with their months.
+- Step 7: "Download everything" ZIP with a READ_ME; separate cards for materials & BOQ, cost, schedule, shops
+  (shopping list PDF with approximate prices and trade filter), project file.
+- Sidebar: progress first; AI keys in a closed "AI assistant (optional)" box; developer toolbar hidden.
 
 **v0.12.1 — official rate books for 5 cities**
 - Imported: Punjab MRS 2nd Bi-Annual 2026 for **Rawalpindi** (also Islamabad) and **Lahore** (also Faisalabad,

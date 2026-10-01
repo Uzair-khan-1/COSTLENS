@@ -73,7 +73,8 @@ def build_project(project_inputs, params, kb: KnowledgeBase, facts=None, files: 
     """rooms_override / openings_override: user-reviewed lists of Room / OpeningGroup that replace the
     drawing-derived ones BEFORE counts that depend on them (baths, kitchens, points ...) are derived."""
     pi = project_inputs
-    p = DetailedProject(project_name=getattr(pi, "project_name", "") or "Untitled Project",
+    _name = (getattr(pi, "project_name", "") or "").strip()
+    p = DetailedProject(project_name=_name if _name and _name != "Untitled Project" else "My house",
                         client=getattr(pi, "client_name", ""), location=getattr(pi, "location", ""))
     p.options = options or Options()
     p.overrides = dict(overrides or {})

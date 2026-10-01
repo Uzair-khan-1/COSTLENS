@@ -186,7 +186,7 @@ def step_1():
 
     if submitted:
         st.session_state["project_inputs"] = pi.model_copy(update=dict(
-            project_name=project_name or "Untitled Project",
+            project_name=project_name or "My house",
             client_name=client_name,
             location=city,
             wall_thickness_mm=wall_thickness_mm,

@@ -252,7 +252,7 @@ def step_3():
             go_to_step(2)
             st.rerun()
     with c2:
-        if st.button("\U0001f4be Save table changes", help="Saves the Rooms / Doors & windows tables and refreshes everything that depends on them."):
+        if st.button("\U0001f4be Save my table edits", help="Saves your changes in the Rooms / Doors & windows tables."):
             mto_views.save_review(room_rows, opening_rows)
             st.rerun()
     blocked = bool(errors) or not rd.ready or not ack_ok

@@ -22,7 +22,7 @@ from detailed_mto.edits import (OPENING_COLS, ROOM_COLS, mark_user_edits, openin
 from detailed_mto.engine import (INCLUDED_STATUSES, ST_CALC, ST_CALC_ASSUMED, ST_NEEDS_INPUT, ST_OPTION, ST_PROVISIONAL,
                                  ST_REFERENCE, DetailedResult, purchase_qty)
 from detailed_mto.export import STAGE_NAMES, benchmarks_for
-from detailed_mto.boq import boq_rows
+
 from detailed_mto.validation import errors, validate_project
 from knowledge import load_knowledge_base
 
@@ -411,7 +411,7 @@ def render_coefficients() -> None:
 KEY_TOTALS = [
     ("Cement", {"CON-001"}, "bags", 1),
     ("Steel", {"RBR-001", "RBR-002", "RBR-003", "RBR-004"}, "ton", 1000),
-    ("Bricks", {"MAS-001", "MAS-002"}, "Nos", 1),
+    ("Bricks", {"MAS-001", "MAS-002"}, "bricks", 1),
     ("Sand", {"CON-004", "CON-005", "EW-003", "EXT-003", "PDR-020"}, "cft", 1),
     ("Crush", {"CON-006", "CON-007", "CON-008"}, "cft", 1),
     ("Tiles (floor + wall)", {"FLR-001", "FLR-002", "FLR-003"}, "sft", 1),
@@ -419,7 +419,7 @@ KEY_TOTALS = [
 
 
 def _total(res: DetailedResult, ids) -> float:
-    return sum(m.gross_qty for m in res.materials if m.material.mat_id in ids)
+    return sum(m.gross_qty for m in res.purchase_list() if m.material.mat_id in ids)
 
 
 MAIN_ICONS = {"Cement": "\U0001f3ed", "Steel": "\U0001f529", "Bricks": "\U0001f9f1", "Sand": "\u23f3", "Crush": "\U0001faa8",
@@ -434,25 +434,25 @@ def render_takeoff(res: DetailedResult) -> None:
     from ui.illustrations import stat_cards_html
     counts = res.status_counts()
     quantified = sum(v for k, v in counts.items() if k in INCLUDED_STATUSES)
-    section("\U0001f4e6 Main materials for your house", "Quantities to buy, including normal site wastage.")
+    section("\U0001f4e6 Main materials for your house", "Quantities to buy, including normal site wastage. "
+            "The Bill of Quantities (work items) and the cost are in the next step.")
     cards = []
+    import math
     for label, ids, unit, div in KEY_TOTALS:
         v = _total(res, ids) / div
-        if v > 0:
-            cards.append((MAIN_ICONS.get(label, "\u2022"), label, f"{v:,.2f} {unit}" if div > 1 else f"{v:,.0f} {unit}",
-                          MAIN_SUB.get(label, "")))
+        if v > 0:  # rounded UP like the shopping list, so the card and the list show the same number
+            cards.append((MAIN_ICONS.get(label, "\u2022"), label, f"{math.ceil(v * 100) / 100:,.2f} {unit}" if div > 1
+                          else f"{math.ceil(v - 1e-9):,.0f} {unit}", MAIN_SUB.get(label, "")))
     st.markdown(stat_cards_html(cards), unsafe_allow_html=True)
     st.caption(f"\u2705 {quantified} materials calculated \u00b7 {counts.get(ST_CALC_ASSUMED, 0)} use a standard size or count "
-               f"(marked 'check') \u00b7 {counts.get(ST_NEEDS_INPUT, 0)} need your input \u00b7 prices are not included yet.")
+               f"(marked 'check') \u00b7 {counts.get(ST_NEEDS_INPUT, 0)} need your input \u00b7 prices and the Bill of Quantities are in Step 5.")
     copilot_views.render_checker(res)  # drawing conflicts, odd ratios, inconsistencies - with one-click fixes
 
-    t_buy, t_boq, t_when, t_ai, t_eng = st.tabs(["\U0001f6d2 What to buy", "\U0001f9fe Bill of Quantities", "\U0001f5d3\ufe0f When to buy",
-                                                 "\U0001f916 Ask the assistant", "\u2699\ufe0f For engineers"],
-                                                key="dmto_step4_tabs")  # keyed: stays on the same tab after a button click
+    t_buy, t_when, t_ai, t_eng = st.tabs(["\U0001f6d2 What to buy", "\U0001f5d3\ufe0f When to buy",
+                                          "\U0001f916 Ask the assistant", "\u2699\ufe0f For engineers"],
+                                         key="dmto_step4_tabs")  # keyed: stays on the same tab after a button click
     with t_buy:
         _shopping_tab(res)
-    with t_boq:
-        _boq_tab(res)
     with t_when:
         _stage_tab(res)
     with t_ai:
@@ -475,19 +475,6 @@ def render_takeoff(res: DetailedResult) -> None:
             _checks_tab(res)
 
 
-def _boq_tab(res: DetailedResult) -> None:
-    rows = boq_rows(res)
-    st.caption("The work your contractor will do, measured from your house (e.g. brickwork in cft, plaster in sq ft). "
-               "Give this to contractors so they can quote their rates - prices will be added in a later version. "
-               "\u26a0\ufe0f = based on a standard size, please confirm.")
-    secs = list(dict.fromkeys(r["Section"] for r in rows))
-    pick = st.multiselect("Sections", secs, default=[], placeholder="All sections", key="boq_secs")
-    view = [r for r in rows if not pick or r["Section"] in pick]
-    st.dataframe(pd.DataFrame(view), hide_index=True, width="stretch", height=520,
-                 column_config={"Description of work": st.column_config.TextColumn(width="large"),
-                                "Quantity": st.column_config.NumberColumn(format="localized")})
-
-
 def _reliability(m) -> str:
     if m.material.unit.upper() == "LS":
         return "Lump-sum item"
@@ -499,7 +486,7 @@ def _reliability(m) -> str:
 def _shopping_tab(res: DetailedResult) -> None:
     buy = res.purchase_list()
     cats = list(dict.fromkeys(m.material.category for m in buy))
-    st.caption(f"{len(buy)} materials to purchase for scope **{res.scope}**, rounded up to how they are sold "
+    st.caption(f"{len(buy)} materials to buy for the work you chose, rounded up to how they are sold "
                "(bags, tons, coils, pipe lengths, hundreds of bricks). Wastage is included.")
     c1, c2 = st.columns([3, 1])
     sel = c1.multiselect("Trade", cats, default=[], placeholder="All trades", key="dmto_shop_cat")

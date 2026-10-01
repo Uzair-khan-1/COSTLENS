@@ -194,8 +194,9 @@ def compute_cost(res, settings: CostSettings, book: Optional[RateBook] = None, s
         extras.append((label, amt))
     subtotal = construction + sum(a for _l, a in extras)
     contingency = subtotal * settings.contingency_pct / 100.0
-    lo = sum(ln.low for ln in lines)
-    hi = sum(ln.high for ln in lines)
+    # likely range: halfway to each rate's low / high - prices of different items don't all hit their extremes at once
+    lo = sum(ln.amount - 0.5 * (ln.amount - ln.low) for ln in lines)
+    hi = sum(ln.amount + 0.5 * (ln.high - ln.amount) for ln in lines)
     k = (1 + settings.profit_pct / 100.0 * (base / max(materials + labour, 1)))
     covered = sum(f.covered_sft for f in res.project.floors)
     result = CostResult(settings, lines, materials, labour, profit, extras, contingency, 0.0,
@@ -321,3 +322,25 @@ def wi_market_costs(cost: CostResult, res) -> Tuple[Dict[str, float], float]:
         for wi, q in sh.items():
             out[wi] = out.get(wi, 0.0) + ln.amount * q / tot
     return out, loose
+
+
+def priced_boq(cost: CostResult, res) -> List[dict]:
+    """Contractor-style priced BOQ: every work item with quantity, all-in rate (materials + labour) and amount,
+    in the usual Pakistani order. Fittings bought as units are one extra line."""
+    from detailed_mto.boq import boq_rows
+    wc, loose = wi_market_costs(cost, res)
+    labour = {ln.code: ln.amount for ln in cost.lines if ln.kind == "labour"}
+    by_desc = {w.description: w.wi_id for w in res.scoped_work_items()}
+    rows = []
+    for r in boq_rows(res):
+        wi = by_desc.get(r["Description of work"])
+        amt = wc.get(wi, 0.0)
+        q = float(r["Quantity"] or 0)
+        rows.append({"No.": r["No."], "Section": r["Section"], "Description of work": r["Description of work"], "Unit": r["Unit"],
+                     "Quantity": round(q, 1) if q >= 10 else round(q, 2), "Rate (Rs)": round(amt / q, 2) if q else 0.0, "Amount (Rs)": round(amt),
+                     "of which labour": round(labour.get(wi, 0.0)), "Check": r["Check"]})
+    if loose > 0:
+        rows.append({"No.": len(rows) + 1, "Section": "Fittings & equipment", "Description of work":
+                     "Fittings, fixtures and equipment bought as units (sanitary ware, lights, ACs, kitchen hardware ...)",
+                     "Unit": "LS", "Quantity": 1.0, "Rate (Rs)": round(loose), "Amount (Rs)": round(loose), "of which labour": 0, "Check": ""})
+    return rows

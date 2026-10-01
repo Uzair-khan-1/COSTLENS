@@ -113,15 +113,22 @@ def _headline(cost) -> None:
              ("\U0001f477", "Labour", pkr(cost.labour), "all the work"),
              ("\U0001f91d", "Paid to contractor", pkr(cost.contractor_part), f"incl. {s.profit_pct:g}% profit"),
              ("\U0001f6d2", "You buy yourself", pkr(cost.owner_buys), "materials you purchase"),
-             ("\U0001f4c8", "Price rise", pkr(cost.escalation), f"{s.escalation_pct_month:g}% per month"),
              ("\U0001f3d7\ufe0f", "Grey structure / finishing", f"{grey / max(grey + fin, 1):.0%} / {fin / max(grey + fin, 1):.0%}",
               f"{pkr(grey)} / {pkr(fin)}")]
     st.markdown(stat_cards_html(cards), unsafe_allow_html=True)
     share = cost.rate_status_share()
     live, user = share.get("live", 0.0), share.get("user", 0.0)
-    st.caption(f"Prices: {live:.0%} live market prices \u00b7 {user:.0%} your quotes \u00b7 "
-               f"{1 - live - user:.0%} indicative rate book (Sep 2026, to confirm). "
-               "Add your suppliers' quotes in 'Materials & rates' or 'Upload a quote' to firm up the estimate.")
+    parts = []
+    if live:
+        parts.append(f"{live:.0%} from this week's market prices")
+    if user:
+        parts.append(f"{user:.0%} from your own quotes")
+    rest = 1 - live - user
+    if rest > 0.005:
+        parts.append(f"{rest:.0%} from typical {s.city} prices (Sep 2026)")
+    st.caption("\U0001f4b5 Prices: " + ", ".join(parts) + f". Includes {pkr(cost.escalation)} for prices rising "
+               f"{s.escalation_pct_month:g}% a month while you build. Got a quote from a shop? Add it in 'Upload a quote' "
+               "for a firmer figure.")
 
 
 def _where_money_goes(cost) -> None:
@@ -146,22 +153,43 @@ def _where_money_goes(cost) -> None:
         tooltip=["Trade:N", "Part:N", alt.Tooltip("Lakh:Q", format=",.1f")]).properties(height=28 * len(top) + 40), width="stretch")
 
 
+def _priced_boq(res, cost) -> None:
+    from pricing.costing import priced_boq
+    rows = priced_boq(cost, res)
+    df = pd.DataFrame(rows)
+    st.caption("All the work in your house with quantities and all-in rates (materials + labour) for "
+               f"{cost.settings.city}. Give this to 2-3 contractors and ask them to fill in their own rates - "
+               "then compare. \u26a0\ufe0f = quantity uses a standard value; check it.")
+    secs = ["All sections"] + list(dict.fromkeys(df["Section"]))
+    pick = st.selectbox("Section", secs, key="boq_sec", label_visibility="collapsed")
+    show = df if pick == "All sections" else df[df["Section"] == pick]
+    st.dataframe(show, hide_index=True, width="stretch", height=480,
+                 column_config={"Description of work": st.column_config.TextColumn(width="large"),
+                                "Quantity": st.column_config.NumberColumn(format="localized"),
+                                "Rate (Rs)": st.column_config.NumberColumn(format="localized"),
+                                "Amount (Rs)": st.column_config.NumberColumn(format="localized"),
+                                "of which labour": st.column_config.NumberColumn(format="localized")})
+    st.markdown(f"**Total of the BOQ: {pkr(df['Amount (Rs)'].sum())}** (materials + labour; contractor profit, extras and "
+                "contingency are added in the total above).")
+
+
 def _cashflow(cost) -> None:
     if not cost.cashflow:
-        st.info("Open the schedule (Step 5) to see when the money is needed.")
+        st.info("Open the schedule (Step 6) to see when the money is needed.")
         return
     df = pd.DataFrame(cost.cashflow)
     long = df.melt(id_vars=["Month of"], value_vars=["Materials", "Labour", "Contractor, extras & contingency",
                                                    "Price rise (escalation)"], var_name="Part", value_name="Rs")
     long["Lakh"] = long["Rs"] / 1e5
-    long["Month of"] = pd.to_datetime(long["Month of"])
+    order = [d.strftime("%b %Y") for d in df["Month of"]]
+    long["Month"] = long["Month of"].map(lambda d: d.strftime("%b %Y"))
     bars = alt.Chart(long).mark_bar().encode(
-        x=alt.X("yearmonth(Month of):T", title=None, axis=alt.Axis(format="%b %Y", labelAngle=0)),
+        x=alt.X("Month:N", sort=order, title=None, axis=alt.Axis(labelAngle=0)),
         y=alt.Y("sum(Lakh):Q", title="Rs lakh this month"),
         color=alt.Color("Part:N", legend=alt.Legend(orient="top", title=None),
                         scale=alt.Scale(domain=["Materials", "Labour", "Contractor, extras & contingency", "Price rise (escalation)"],
                                         range=[config.BRAND_TEAL, "#F59E0B", "#1F3864", "#F87171"])),
-        tooltip=[alt.Tooltip("yearmonth(Month of):T", title="Month"), "Part:N", alt.Tooltip("sum(Lakh):Q", format=",.1f")])
+        tooltip=["Month:N", "Part:N", alt.Tooltip("sum(Lakh):Q", title="Rs lakh", format=",.1f")])
     st.altair_chart(bars.properties(height=300), width="stretch")
     peak = max(cost.cashflow, key=lambda m: m["Total"])
     st.success(f"\U0001f4b0 The most money is needed in **{peak['Month of']:%B %Y}**: about **{pkr(peak['Total'])}**. "
@@ -409,13 +437,12 @@ def render_cost_step(res) -> None:
         st.info("Nothing to price in the selected scope.")
         return
     _headline(cost)
-    tabs = st.tabs(["\U0001f4ca Where the money goes", "\U0001f4c5 Money needed each month", "\U0001f6d2 Materials & rates",
-                    "\U0001f477 Labour rates", "\U0001f4c4 Upload a quote", "\U0001f3db\ufe0f Government estimate",
-                    "\U0001f504 Price updates (admin)"], key="cost_tabs")
+    tabs = st.tabs(["\U0001f9fe Bill of Quantities", "\U0001f4ca Where the money goes", "\U0001f6d2 Material prices",
+                    "\U0001f477 Labour rates", "\U0001f4c4 Upload a quote", "\U0001f3db\ufe0f Government estimate"], key="cost_tabs")
     with tabs[0]:
-        _where_money_goes(cost)
+        _priced_boq(res, cost)
     with tabs[1]:
-        _cashflow(cost)
+        _where_money_goes(cost)
     with tabs[2]:
         _materials_editor(cost)
     with tabs[3]:
@@ -424,13 +451,12 @@ def render_cost_step(res) -> None:
         _quote_reader(res)
     with tabs[5]:
         _government(res, cost)
-    with tabs[6]:
-        _admin(res)
     from pricing.export import build_cost_workbook, cost_pdf
-    pi = st.session_state.get("project_inputs")
-    name = (pi.project_name if pi and pi.project_name not in ("", "Untitled Project") else "My house")
-    fn = name.replace(" ", "_")
+    from ui.state import display_name, file_stem
+    name, fn = display_name(), file_stem()
     gov, _uf = government(res, cost)
+    with st.expander("\U0001f510 For the app administrator: price updates & rate books"):
+        _admin(res)
     d1, d2 = st.columns(2)
     d1.download_button("\U0001f4b0 Cost estimate (Excel)", data=lambda: build_cost_workbook(cost, name, gov),
                        file_name=f"{fn}_Cost_Estimate.xlsx", type="primary", width="stretch", key="cost_dl_xlsx",

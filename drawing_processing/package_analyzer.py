@@ -1411,10 +1411,6 @@ def apply_package_facts(
         )
         if facts_note not in facts.conflicts:
             facts.conflicts.append(facts_note)
-    elif marla and not project_inputs.plot_marla:
-        note = f"The drawings say {marla[0]:g} marla - choose it as the plot size in Step 1 to enable plot checks."
-        if note not in facts.conflicts:
-            facts.conflicts.append(note)
 
     warnings = []
     for w in p.extraction_warnings:

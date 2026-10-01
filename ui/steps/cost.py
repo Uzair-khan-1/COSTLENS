@@ -1,4 +1,4 @@
-"""Step 6 - cost & cash flow (pricing/)."""
+"""Step 5 - Bill of Quantities & cost (pricing/)."""
 from __future__ import annotations
 
 import streamlit as st
@@ -12,7 +12,7 @@ def step_cost():
     from ui.cost_views import render_cost_step
     from ui.guide import step_header
 
-    step_header(6)
+    step_header(5)
     pi: ProjectInputs = st.session_state["project_inputs"]
     res = mto_views.ensure_current_result(pi, st.session_state.get("extracted_params"))
     if res is None:
@@ -25,10 +25,11 @@ def step_cost():
     render_cost_step(res)
     c1, c2 = st.columns(2)
     with c1:
-        if st.button("\u2190 Back to schedule", key="cost_back_to_5"):
-            go_to_step(5)
+        if st.button("\u2190 Back to materials", key="cost_back_to_4"):
+            go_to_step(4)
             st.rerun()
     with c2:
-        if st.button("Next: download & share \u2192", type="primary", width="stretch", key="cost_next_7"):
-            go_to_step(7)
+        if st.button("Next: when can I move in? (schedule & money per month) \u2192", type="primary", width="stretch",
+                     key="cost_next_6"):
+            go_to_step(6)
             st.rerun()

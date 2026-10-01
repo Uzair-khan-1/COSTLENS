@@ -135,6 +135,15 @@ def _render_found_summary(facts, scan) -> None:
     floors = [f for k, f in facts.floors.items() if k != "roof"]
     rooms = [r for f in floors for r in f.rooms]
     area = sum(f.covered_sqft or 0 for f in floors)
+    try:  # the same covered area Step 3 will show (the builder resolves area-statement vs measured footprint)
+        from detailed_mto import build_project
+        from ui import mto_views
+        pi = st.session_state["project_inputs"]
+        prm, _a, _f = apply_package_facts(base_params(pi), facts, pi)
+        proj = build_project(pi, prm, mto_views.kb(), facts=facts, scan=st.session_state.get("dmto_scan"))
+        area = sum(f.covered_sft for f in proj.floors) or area
+    except Exception:  # noqa: BLE001 - fall back to the drawing figures
+        pass
     from detailed_mto.builder import classify_room
     from knowledge import load_knowledge_base
     kb = load_knowledge_base()
@@ -186,8 +195,8 @@ def _render_plot_check(facts, pi) -> bool:
         st.session_state.pop("plot_dims_user", None)
         area = w[0] * d[0]
         st.success(f"\U0001f4d0 **Plot size read from your drawings:** {w[0]:g} ft x {d[0]:g} ft = {area:,.0f} sq ft "
-                   f"\u2248 **{area / msq:.1f} marla** (1 marla = {msq:g} sq ft in {pi.location or 'your city'}).  \n"
-                   f"<span style='opacity:.7;font-size:13px'>Source: {w[1]}</span>", icon=None)
+                   f"\u2248 **{area / msq:.1f} marla** (1 marla = {msq:g} sq ft in {pi.location or 'your city'}). "
+                   f"Source: {w[1]}.")
         return True
     section("\U0001f4d0 Plot size", "We could not find the plot dimensions on the drawings. Please enter them (in feet).")
     prev = st.session_state.get("plot_dims_user") or (None, None)
@@ -274,13 +283,17 @@ def step_2():
         if st.session_state.get("pdf_text_hint"):
             st.markdown("**Hints passed to the AI**")
             st.text(st.session_state["pdf_text_hint"])
-    for c in facts.conflicts:
-        st.warning("\u26a0\ufe0f " + c)
-
-    project_context = st.text_area(
-        "Anything the AI should know? (optional)",
-        placeholder="e.g. 'This is a G+1 house, footings are isolated RCC pad footings, drawing is not to exact scale...'",
-    )
+    if facts.conflicts:
+        with st.expander(f"\U0001f4dd Notes from reading your drawings ({len(facts.conflicts)}) - where sheets disagree, "
+                         "we used the safer value"):
+            for c in facts.conflicts:
+                st.markdown("\u2022 " + c)
+    with st.expander("\U0001f9e0 Optional: ask the AI to read the drawings too"):
+        project_context = st.text_area(
+            "Anything the AI should know? (optional)",
+            placeholder="e.g. 'This is a G+1 house, footings are isolated RCC pad footings, drawing is not to exact scale...'",
+        )
+        st.caption("Needs a free AI key in the sidebar. Press 'Also ask the AI to fill gaps' below.")
     # Wall material/thickness are rarely labelled on a simple line drawing;
     # pass the Step 1 choice as a prior the AI uses unless the drawing
     # clearly shows otherwise (see ai/prompts.py rules 1-3).

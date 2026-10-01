@@ -72,11 +72,11 @@ elif step == 4:
     from ui.steps.takeoff import step_4
     step_4()
 elif step == 5:
-    from ui.steps.schedule import step_schedule  # construction schedule & Gantt chart (scheduling/)
-    step_schedule()
-elif step == 6:
-    from ui.steps.cost import step_cost  # cost & cash flow (pricing/)
+    from ui.steps.cost import step_cost  # Bill of Quantities & cost (pricing/)
     step_cost()
+elif step == 6:
+    from ui.steps.schedule import step_schedule  # schedule, workers & money per month (scheduling/)
+    step_schedule()
 elif step == 7:
     from ui.steps.export import step_5
     step_5()

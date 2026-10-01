@@ -37,6 +37,6 @@ def step_4():
             go_to_step(3)
             st.rerun()
     with c2:
-        if st.button("Next: when can I move in? (schedule & workers) \u2192", type="primary", width="stretch"):
+        if st.button("Next: Bill of Quantities & cost \u2192", type="primary", width="stretch"):
             go_to_step(5)
             st.rerun()

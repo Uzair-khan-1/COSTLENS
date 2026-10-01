@@ -50,11 +50,24 @@ def _plan_key(res, months) -> tuple:
     return (id(res), repr(settings()), float(months))
 
 
+TARGET_OPTIONS = [4, 5, 6, 7, 8, 10, 12]
+
+
+def chosen_months(res) -> float:
+    """The owner's target, or - before they choose - the option closest to the normal pace (same default as the
+    buttons), so the screen, the cost cash flow and every download use the same programme."""
+    t = st.session_state.get("sched_target")
+    if t:
+        return float(t)
+    nat = natural_months(res)
+    return float(min(TARGET_OPTIONS, key=lambda m: abs(m - round(nat))))
+
+
 def current_plan(res, months: Optional[float] = None) -> Optional[TargetPlan]:
     """The planned programme for the chosen target (cached per result + settings + target)."""
     if res is None:
         return None
-    months = float(months or st.session_state.get("sched_target") or 0) or natural_months(res)
+    months = float(months or 0) or chosen_months(res)
     key = _plan_key(res, months)
     cache = st.session_state.get("sched_plan_cache")
     if cache and cache[0] == key:
@@ -388,6 +401,11 @@ def _month_by_month(sched: Schedule) -> None:
                             + (f" \u00b7 _{crew}_" if crew else ""))
 
 
+def pkr_short(v: float) -> str:
+    from pricing.costing import pkr
+    return pkr(v)
+
+
 def _owner_view(res, plan: TargetPlan) -> None:
     from ui.illustrations import stat_cards_html
     sched = plan.schedule
@@ -399,8 +417,16 @@ def _owner_view(res, plan: TargetPlan) -> None:
              ("\U0001f4aa", "Total work", f"{sched.total_worker_days():,.0f}", "worker-days"),
              ("\U0001f6e0\ufe0f", "Skilled trades", f"{len(skilled)}", "masons, fixers, electricians ...")]
     st.markdown(stat_cards_html(cards), unsafe_allow_html=True)
-    t1, t2, t3, t4 = st.tabs(["\U0001f5d3\ufe0f Timeline", "\U0001f477 Workers needed", "\U0001f4c6 Month by month",
-                              "\U0001f69a When to buy materials"], key="sched_owner_tabs")
+    t1, t2, t5, t3, t4 = st.tabs(["\U0001f5d3\ufe0f Timeline", "\U0001f477 Workers needed", "\U0001f4b0 Money needed each month",
+                                  "\U0001f4c6 Month by month", "\U0001f69a When to buy materials"], key="sched_owner_tabs")
+    with t5:
+        try:
+            from ui.cost_views import _cashflow, current_cost
+            cost, _s = current_cost(res)
+            st.caption(f"Based on the cost in Step 5 ({cost.settings.city}, {pkr_short(cost.total)}) and this programme.")
+            _cashflow(cost)
+        except Exception as exc:  # noqa: BLE001
+            st.info(f"Open Step 5 (BOQ & cost) first. ({exc})")
     with t1:
         st.altair_chart(_timeline(sched), width="stretch")
         ms = _milestones(sched)
@@ -611,8 +637,8 @@ def render_schedule_tab(res) -> None:
             f"A small team builds your house in about {nat:.1f} months. With more crews the fastest realistic time is about "
             f"{fast:.1f} months (concrete must cure and plaster must dry - that cannot be rushed).")
     c1, c2 = st.columns([4, 1])
-    opts = [4, 5, 6, 7, 8, 10, 12]
-    default = st.session_state.get("sched_target") or min(opts, key=lambda m: abs(m - round(nat)))
+    opts = TARGET_OPTIONS
+    default = int(chosen_months(res))
     months = c1.segmented_control("Target duration", opts, default=default, required=True,
                                   format_func=lambda m: f"{m} months" + (" \u26a1" if m < fast else ""), key="sched_target")
     start = c2.date_input("Start date", value=s.start(), key="sched_start_simple", format="DD/MM/YYYY")
@@ -639,9 +665,8 @@ def render_schedule_tab(res) -> None:
         _engineer_view(res, plan)
     else:
         _owner_view(res, plan)
-    pi = st.session_state.get("project_inputs")
-    name = ((pi.project_name if pi else "") or "Project")
-    fn = name.replace(" ", "_")
+    from ui.state import display_name, file_stem
+    name, fn = display_name(), file_stem()
     d1, d2 = st.columns(2)
     d1.download_button("\U0001f4c5 Schedule, Gantt & manpower (Excel)", data=lambda: workbook_bytes(res, name),
                        file_name=f"{fn}_Schedule.xlsx", type="primary", width="stretch",

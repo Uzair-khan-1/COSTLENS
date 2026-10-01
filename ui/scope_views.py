@@ -96,18 +96,18 @@ def render_detail_questions(p) -> None:
     section("2\ufe0f\u20e3 A few details we need",
             f"{len(qs) - len(need)} of {len(qs)} answered. Items marked \U0001f4d0 were read from your drawings - change them only if wrong.")
     ver = st.session_state.get("spec_ver", 0)
-    cols = st.columns(2)
     changed = False
-    for i, q in enumerate(qs):
+
+    def card(q, col) -> bool:
         opts = q.options(p)
         if not opts:
-            continue
+            return False
         labels = [lbl for lbl, _v in opts]
         found = q.found(p) if q.found else None
         cur = answers.get(q.id, found)
         idx = next((k for k, (_l, v) in enumerate(opts) if v == cur or (isinstance(v, float) and isinstance(cur, (int, float))
                                                                         and abs(v - float(cur)) < 1e-6)), None)
-        with cols[i % 2].container(border=True):
+        with col.container(border=True):
             tag = ("\U0001f4d0 from your drawings" if (found is not None and q.id not in answers) else
                    ("\u2714\ufe0f answered" if q.id in answers else "\u2b55 needed"))
             st.markdown(f"<div style='font-size:16px;font-weight:700'>{q.icon} {q.title} "
@@ -121,10 +121,22 @@ def render_detail_questions(p) -> None:
             if pick is not None:
                 val = dict(opts)[pick]
                 if found is not None and val == found and q.id not in answers:
-                    continue  # still the drawing value - nothing to store
+                    return False  # still the drawing value - nothing to store
                 if answers.get(q.id) != val:
                     answers[q.id] = val
-                    changed = True
+                    return True
+        return False
+
+    from_drawings = [q for q in qs if q.id not in answers and q.found and q.found(p) is not None]
+    main = [q for q in qs if q not in from_drawings]
+    cols = st.columns(2)
+    for i, q in enumerate(main):
+        changed = card(q, cols[i % 2]) or changed
+    if from_drawings:
+        with st.expander(f"\U0001f4d0 Already filled in from your drawings ({len(from_drawings)}) - open only to check or change"):
+            dcols = st.columns(2)
+            for i, q in enumerate(from_drawings):
+                changed = card(q, dcols[i % 2]) or changed
     if changed:
         st.session_state["spec_answers"] = answers
         st.rerun()

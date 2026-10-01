@@ -111,8 +111,12 @@ def evaluate(p: DetailedProject, selected: set, answers: Dict[str, object], scop
                                    "standard kg-per-cubic-foot ratios. Your engineer's bar schedule would make this exact."))
 
     # ---- remaining engineering standards
-    eng = [f"{label} {p.v(k):g} {p.params[k].unit if p.params[k].unit not in ('-', 'flag') else ''}".strip()
-           for k, label in ENGINEERING.items() if k in p.params and not _is_known(p.params[k])]
+    def _plain(k: str) -> str:
+        v, u = p.v(k), p.params[k].unit
+        unit = {"Nos": "", "-": "", "flag": "", "rft": "ft", "in": "in", "ft": "ft", "sft": "sq ft", "cft": "cu ft"}.get(u, u)
+        num = f"{v:,.0f}" if abs(v) >= 20 else f"{round(v, 1):g}"
+        return f"{num} {unit}".strip()
+    eng = [f"{label}: {_plain(k)}" for k, label in ENGINEERING.items() if k in p.params and not _is_known(p.params[k])]
     if eng:
         r.assumptions.append(Check("engineering", "Standard construction values",
                                    "Not on your drawings, so common Pakistani standards are used: " + "; ".join(eng[:12]) +

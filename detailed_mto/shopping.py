@@ -49,8 +49,9 @@ def shopping_text(res: DetailedResult, trades: List[str] = None, max_lines: int 
     return "\n".join(lines).strip()
 
 
-def shopping_pdf(res: DetailedResult) -> bytes:
-    """A4 PDF shopping list grouped by trade (reportlab, already a dependency of the app)."""
+def shopping_pdf(res: DetailedResult, trades: List[str] = None, prices: dict = None, city: str = "") -> bytes:
+    """A4 PDF shopping list grouped by trade. trades: only these trades (e.g. for one shop).
+    prices: {mat_id: approximate amount in Rs} - adds an 'Approx. Rs' column and totals."""
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet
@@ -62,27 +63,49 @@ def shopping_pdf(res: DetailedResult) -> bytes:
                             title=f"{res.project.project_name} - material list")
     ss = getSampleStyleSheet()
     small = ss["BodyText"].clone("small", fontSize=8, leading=10)
+    def rs(v: float) -> str:
+        return f"{v:,.0f}"
+
     story = [Paragraph(f"<b>{res.project.project_name}</b> - Material shopping list", ss["Title"]),
-             Paragraph(f"Scope: {res.scope} &nbsp;|&nbsp; Finish: {res.project.options.finish_tier} &nbsp;|&nbsp; "
-                       f"{datetime.now():%d %b %Y} &nbsp;|&nbsp; Quantities only - no prices", small)]
+             Paragraph(f"CostLens &nbsp;|&nbsp; {datetime.now():%d %b %Y}" +
+                       (f" &nbsp;|&nbsp; approximate prices for {city} (indicative - ask the shop for its rate)" if prices
+                        else " &nbsp;|&nbsp; quantities only") +
+                       (f" &nbsp;|&nbsp; only: {', '.join(trades)}" if trades else ""), small)]
     if res.project.drawing_mode in ("scanned", "none", "sketch"):
         story.append(Paragraph("<font color='#9c5700'><b>Concept estimate</b> - not based on full architectural drawings.</font>", small))
     story.append(Spacer(1, 4 * mm))
+    grand = 0.0
     for cat, items in _groups(res).items():
+        if trades and cat not in trades:
+            continue
         story.append(Paragraph(f"<b>{cat}</b> ({len(items)} items)", ss["Heading4"]))
-        rows = [["#", "Material", "Specification", "Buy", "Note"]]
+        head = ["#", "Material", "Specification", "Buy", "Note"] + (["Approx. Rs"] if prices else [])
+        rows = [head]
+        sub = 0.0
         for i, m in enumerate(items, 1):
             note = "check" if m.confidence in ("Assumed", "Low") and m.material.unit.upper() != "LS" else ""
-            rows.append([str(i), Paragraph(m.material.description, small), Paragraph(m.material.specification[:90], small),
-                         Paragraph(f"<b>{_qty_text(m)}</b>", small), note])
-        t = Table(rows, colWidths=[8 * mm, 62 * mm, 60 * mm, 38 * mm, 14 * mm], repeatRows=1)
+            row = [str(i), Paragraph(m.material.description, small), Paragraph(m.material.specification[:90], small),
+                   Paragraph(f"<b>{_qty_text(m)}</b>", small), note]
+            if prices:
+                amt = float(prices.get(m.material.mat_id, 0.0))
+                sub += amt
+                row.append(rs(amt) if amt else "")
+            rows.append(row)
+        if prices:
+            grand += sub
+            rows.append(["", Paragraph(f"<b>Total {cat}</b>", small), "", "", "", Paragraph(f"<b>{rs(sub)}</b>", small)])
+        widths = [8 * mm, 56 * mm, 52 * mm, 34 * mm, 12 * mm, 20 * mm] if prices else [8 * mm, 62 * mm, 60 * mm, 38 * mm, 14 * mm]
+        t = Table(rows, colWidths=widths, repeatRows=1)
         t.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F3864")), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
             ("FONTSIZE", (0, 0), (-1, -1), 8), ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D0D7E2")),
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F3F6FA")]),
             ("VALIGN", (0, 0), (-1, -1), "TOP"), ("TEXTCOLOR", (4, 1), (4, -1), colors.HexColor("#C65911")),
+            ("ALIGN", (5, 0), (5, -1), "RIGHT"),
         ]))
         story += [t, Spacer(1, 3 * mm)]
+    if prices:
+        story.append(Paragraph(f"<b>Approximate total of this list: Rs {rs(grand)}</b> (materials only, {city}).", ss["Heading4"]))
     story.append(Paragraph("Quantities include normal wastage and are rounded up to purchase units. 'check' = based on default "
                            "values - confirm before ordering. Preliminary take-off, not a certified QS takeoff.", small))
     doc.build(story)
