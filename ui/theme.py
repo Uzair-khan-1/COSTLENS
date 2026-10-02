@@ -54,7 +54,7 @@ html, body, [class*="css"] {{
     border-image: linear-gradient(90deg, {config.BRAND_NAVY}, {config.BRAND_TEAL} 55%, #14B8A6, {config.BRAND_GOLD}) 1;
     box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
 }}
-.cl-hero img {{ height: 74px; display: block; }}
+.cl-hero img {{ height: 88px; display: block; }}
 .cl-hero-text p {{
     color: {config.TEXT_MUTED} !important;
     font-size: 1.02rem !important;
@@ -136,7 +136,7 @@ h1, h2, h3 {{ font-weight: 700; }}
 [data-testid="stLogo"] img,
 .stLogo,
 .stLogo img {{
-    height: 3.2rem !important;
+    height: 3.9rem !important;
     max-height: none !important;
     width: auto !important;
 }}
@@ -188,12 +188,28 @@ h1, h2, h3 {{ font-weight: 700; }}
 .st-key-cl_step_nav .stButton button[kind="primary"] p {{ color: {config.BRAND_NAVY} !important; }}
 .st-key-cl_step_nav .stButton button:disabled {{ opacity: 0.55; }}
 [data-testid="stMain"], section.main {{ overflow-anchor: none; }}
-/* light buttons inside the dark sidebar (download / file uploader) need dark text */
-[data-testid="stSidebar"] .stDownloadButton button p,
-[data-testid="stSidebar"] [data-testid="stFileUploader"] button,
-[data-testid="stSidebar"] [data-testid="stFileUploader"] button p,
-[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] span,
-[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] small {{ color: {config.BRAND_NAVY} !important; }}
+/* download buttons and file uploaders on the dark theme: light text on a visible surface (sidebar and main) */
+.stDownloadButton button, [data-testid="stFileUploader"] button {{
+    background: rgba(59, 155, 232, 0.16) !important;
+    border: 1px solid rgba(59, 155, 232, 0.55) !important;
+}}
+.stDownloadButton button[kind="primary"] {{
+    background: linear-gradient(120deg, {config.BRAND_TEAL} 0%, #14B8A6 100%) !important;
+    border: none !important;
+}}
+.stDownloadButton button p, .stDownloadButton button span,
+[data-testid="stFileUploader"] button, [data-testid="stFileUploader"] button p, [data-testid="stFileUploader"] button span,
+[data-testid="stFileUploaderDropzone"] span, [data-testid="stFileUploaderDropzone"] small,
+[data-testid="stFileUploaderDropzone"] div {{ color: #E8EEF5 !important; }}
+[data-testid="stFileUploaderDropzone"] {{
+    background: rgba(255, 255, 255, 0.04) !important;
+    border: 1px dashed rgba(255, 255, 255, 0.25) !important;
+}}
+[data-testid="stFileUploaderFile"] * {{ color: #E8EEF5 !important; }}
+/* markdown tables and headings inside expanders stay compact and readable */
+[data-testid="stExpander"] table {{ font-size: 0.86rem; }}
+[data-testid="stExpander"] th {{ background: rgba(59, 155, 232, 0.14); color: #FFFFFF !important; }}
+[data-testid="stExpander"] td {{ color: #E7EEF8 !important; }}
 .st-key-cl_scroll_top {{ height: 0 !important; min-height: 0 !important; overflow: hidden; margin: 0 !important; padding: 0 !important; }}
 
 /* ---------------------------------------------------------------- *

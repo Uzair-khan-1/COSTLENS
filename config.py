@@ -14,7 +14,7 @@ from pathlib import Path
 APP_NAME = "CostLens"
 APP_TAGLINE = "Materials \u2022 Cost \u2022 Schedule"
 APP_FULL_NAME = "CostLens - Drawing-based Material Take-Off for 5-10 marla houses"
-APP_VERSION = "0.16.0"
+APP_VERSION = "0.17.0"
 
 # Brand assets (see assets/generate_logo.py to regenerate/tweak).
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"

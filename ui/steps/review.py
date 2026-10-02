@@ -194,12 +194,15 @@ def step_3():
     section("\U0001f3e1 Your house", "Read from your " + ("answers" if st.session_state.get("input_mode") == "sketch"
                                                           else "drawings") + ".")
     _house_summary(pi, params)
+    flash = st.session_state.pop("copilot_flash", None)
+    if flash:
+        st.success(flash)
     checklist = st.container()  # filled at the end, after the answers on this page are known
 
     scope_views.render_scope_picker()
     scope_views.render_detail_questions(mto_views.current_project(pi, params))
 
-    section("3\ufe0f\u20e3 Check rooms, doors & windows", "Values marked \u26aa are standard sizes; \U0001f7e2 come from your drawings; "
+    section("3\ufe0f\u20e3 Check rooms, doors & windows", anchor="cl-rooms", subtitle="Values marked \u26aa are standard sizes; \U0001f7e2 come from your drawings; "
             "\U0001f535 are yours. Fix anything that looks wrong.")
     if (st.session_state.get("used_ai") or st.session_state.get("drawing_filled")) and params.extraction_warnings:
         with st.expander("\u26a0\ufe0f Notes from reading the drawings", expanded=False):
@@ -264,11 +267,16 @@ def step_3():
             go_to_step(4)
             st.rerun()
     if blocked:
-        why = []
-        if rd.missing:
-            why.append(f"answer the {len(rd.missing)} missing item(s) listed at the top")
-        if errors:
-            why.append("fix the items marked in red")
-        if not ack_ok and rd.ready:
-            why.append("confirm the assumptions (tick the box above)")
-        st.caption("To calculate: " + "; ".join(why) + ".")
+        with st.container(border=True):
+            st.markdown("**\u270b Before you can calculate:**")
+            if rd.missing:
+                render_missing = scope_views.render_missing_fixes
+                render_missing(rd, pi, params, key="bottom")
+            for e in errors:
+                st.markdown(f"\u2b55 <b>Check this value</b> - {e} "
+                            "<a href='#cl-rooms' target='_self' style='color:#5CC8E8;font-weight:600'>\u2192 take me there</a>",
+                            unsafe_allow_html=True)
+            if not ack_ok and rd.ready:
+                st.markdown("\u2b55 <b>Assumptions</b> - tick 'I have read these assumptions' just above. "
+                            "<a href='#cl-assume' target='_self' style='color:#5CC8E8;font-weight:600'>\u2192 take me there</a>",
+                            unsafe_allow_html=True)

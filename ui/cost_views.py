@@ -188,7 +188,7 @@ def _cashflow(cost) -> None:
         y=alt.Y("sum(Lakh):Q", title="Rs lakh this month"),
         color=alt.Color("Part:N", legend=alt.Legend(orient="top", title=None),
                         scale=alt.Scale(domain=["Materials", "Labour", "Contractor, extras & contingency", "Price rise (escalation)"],
-                                        range=[config.BRAND_TEAL, "#F4B023", "#1B2F5B", "#F87171"])),
+                                        range=[config.BRAND_TEAL, "#F4B023", "#A78BFA", "#F87171"])),
         tooltip=["Month:N", "Part:N", alt.Tooltip("sum(Lakh):Q", title="Rs lakh", format=",.1f")])
     st.altair_chart(bars.properties(height=300), width="stretch")
     peak = max(cost.cashflow, key=lambda m: m["Total"])
@@ -373,7 +373,14 @@ def _admin(res) -> None:
                 + (f", latest {fr['latest']}" if fr["latest"] else "") + (f", {fr['n_stale']} older than 45 days" if fr["n_stale"] else ""))
     st.dataframe(pd.DataFrame([{"Item": r["name"], "Rate": r["rate"], "Unit": r["unit"], "Status": r["status"], "As of": r["as_of"],
                                 "Source": r["source"]} for r in fr["rows"]]), hide_index=True, width="stretch")
-    st.markdown(f"**Waiting for approval ({len(b.pending)})**")
+    st.markdown(f"**Waiting for approval ({len(b.pending)})** - prices found on the web that changed by more than 5%, or "
+                "came from a single source. Check the quoted sentence and approve or reject.")
+    if len(b.pending) > 1 and st.button(f"\u2705 Approve all {len(b.pending)} waiting prices", key="ap_all"):
+        for p_ in list(b.pending):
+            b.approve(p_, by="admin (approve all)")
+        b.save()
+        reload_book()
+        st.rerun()
     for p in list(b.pending):
         with st.container(border=True):
             c1, c2, c3 = st.columns([4, 1, 1])

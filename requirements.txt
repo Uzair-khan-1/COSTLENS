@@ -13,3 +13,4 @@ numpy==2.4.4
 # Optional OCR (EasyOCR + PyTorch) is NOT included here - it is too heavy
 # for Streamlit Community Cloud's free tier (~1 GB RAM). To enable it on a
 # bigger host:  pip install -r requirements-ocr.txt
+ddgs>=9.0  # DuckDuckGo search client for the price agent (optional - other engines are tried too)

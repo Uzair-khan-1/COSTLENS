@@ -119,6 +119,37 @@ def seed_review_rows(pi, params) -> None:
         st.session_state["dmto_openings"] = openings_to_rows(p)
 
 
+def add_standard_openings(pi, params, kind: str) -> int:
+    """One-click fix when no doors / windows are listed: add the standard ones for the rooms (editable afterwards)."""
+    rows = list(st.session_state.get("dmto_openings") or [])
+    p = _build(pi, params, st.session_state.get("dmto_rooms"), None)
+    new = [r for r in openings_to_rows(p) if r["Kind"] == kind]
+    if not new:  # build them from the rooms
+        rooms = st.session_state.get("dmto_rooms") or []
+        def n_of(*types):
+            return sum(1 for r in rooms if r.get("Room type") in types)
+        if kind == "window":
+            n = n_of("Bedroom", "Lounge / TV lounge", "Drawing room", "Kitchen", "Servant quarter")
+            if n:
+                new = [{"Kind": "window", "Name": "Windows (standard, 1 per room)", "Width (ft)": 4.0, "Height (ft)": 5.0, "Qty": n,
+                        "Leaves": 2, "Chogath (in)": 0.0, "External": True, "Source": "Added by you (standard size)",
+                        "Confidence": "Assumed"}]
+        else:
+            n = n_of("Bedroom", "Lounge / TV lounge", "Drawing room", "Kitchen", "Store / utility", "Servant quarter")
+            nb = n_of("Bathroom")
+            new = [{"Kind": "door", "Name": "Main door", "Width (ft)": 3.5, "Height (ft)": 7.0, "Qty": 1, "Leaves": 1,
+                    "Chogath (in)": 5.0, "External": True, "Source": "Added by you (standard size)", "Confidence": "Assumed"}]
+            if n:
+                new.append({"Kind": "door", "Name": "Room doors", "Width (ft)": 3.0, "Height (ft)": 7.0, "Qty": n, "Leaves": 1,
+                            "Chogath (in)": 5.0, "External": False, "Source": "Added by you (standard size)", "Confidence": "Assumed"})
+            if nb:
+                new.append({"Kind": "door", "Name": "Bathroom doors", "Width (ft)": 2.5, "Height (ft)": 7.0, "Qty": nb, "Leaves": 1,
+                            "Chogath (in)": 4.5, "External": False, "Source": "Added by you (standard size)", "Confidence": "Assumed"})
+    st.session_state["dmto_openings"] = rows + new
+    st.session_state["dmto_ver"] = st.session_state.get("dmto_ver", 0) + 1  # refresh the table
+    return sum(int(r.get("Qty") or 0) for r in new)
+
+
 def current_project(pi, params, room_rows=None, opening_rows=None, with_overrides=True):
     room_rows = st.session_state.get("dmto_rooms") if room_rows is None else room_rows
     opening_rows = st.session_state.get("dmto_openings") if opening_rows is None else opening_rows

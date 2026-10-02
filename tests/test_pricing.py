@@ -191,3 +191,33 @@ def test_cost_workbook_and_pdf(res, book):
     assert {"Cost_Summary", "Materials_Priced", "Labour_Priced", "Cash_Flow"} <= set(wb.sheetnames)
     assert str(wb["Materials_Priced"]["G5"].value).startswith("=E5*F5")
     assert cost_pdf(c, "T")[:4] == b"%PDF"
+
+
+def test_price_agent_reads_rate_tables_and_skips_old_pages(tmp_path):
+    from datetime import date, timedelta
+    from pricing.agent import PriceAgent, html_to_text, page_date, table_extract
+    d = date.today() - timedelta(days=5)
+    old = date.today() - timedelta(days=300)
+    pages = {
+        "https://a.example/cement": f"<h1>Cement Rate Today {d:%d-%m-%Y}</h1><table><tr><th>Brand</th><th>Price/50 kg bag</th></tr>"
+                                    "<tr><td>Lucky Cement</td><td>1,560</td></tr><tr><td>DG Khan Cement</td><td>1,580</td></tr></table>",
+        "https://b.example/cement": f"<p>{d:%B %d, %Y}: cement Rs 1,550 per bag in Islamabad</p>",
+        "https://c.example/cement": f"<h1>Rates {old:%d %B %Y}</h1><table><tr><td>Lucky Cement</td><td>1,100</td></tr></table>",
+    }
+    book = RateBook(tmp_path)
+    agent = PriceAgent(book, search=lambda q: [], fetch=lambda u: html_to_text(pages[u]), pause_s=0,
+                       direct={"CON-001": list(pages)})
+    r = agent.update_item("CON-001", "Islamabad")
+    assert r.new_rate is not None and 1540 <= r.new_rate <= 1580  # median of current pages; the year is not a price
+    assert any("too old" in n for n in r.notes)
+    assert {c.domain for c in r.candidates} == {"a.example", "b.example"}  # one vote per website
+    assert page_date(f"updated {d:%d-%m-%Y}") == d
+    spec = {"sane": (1100, 2200), "keywords": ["cement"], "unit": "bag", "units": {"bag": 1.0}}
+    assert table_extract("Cement Rate Today 2026 per bag\nLucky Cement | 1,560 |", spec)[0]["price"] == 1560
+
+
+def test_news_style_steel_price():
+    from pricing.agent import rule_extract
+    from pricing.base_rates import LIVE_ITEMS
+    got = rule_extract("Grade 60 steel is available at around Rs258 to Rs265 per kilogram.", LIVE_ITEMS["RBR-002"])
+    assert got and got[0]["price"] == 261.5

@@ -1,4 +1,4 @@
-# CostLens — *Materials • Cost • Schedule* (v0.16.0)
+# CostLens — *Materials • Cost • Schedule* (v0.17.0)
 
 A drawing-based **Material Take-Off (MTO)** tool for 5-10 marla houses in
 Pakistan. Upload the complete drawing set (CAD-exported PDFs work best); the
@@ -571,6 +571,17 @@ lines). See **[DETAILED_MTO.md](DETAILED_MTO.md)**.
 ---
 
 ## 8. Changelog
+
+**v0.17.0 — price agent that finds prices, clearer "what is missing", readability**
+- Price agent: reads known rate pages directly (no search engine needed) plus results from several engines in turn
+  (ddgs library, DuckDuckGo lite, Bing, Tavily/Brave with a key); browser-like requests; reads rate TABLES
+  ("Lucky Cement | 1,560"), news wording ("Rs258 to Rs265 per kilogram"); skips pages older than 120 days; ignores
+  years/dates as prices; one vote per website; the report says which engine answered and why a page was skipped.
+  Admin page: "Approve all waiting prices".
+- Step 3: every missing item is named under the Calculate button and in the checklist, with "take me there" links and
+  one-click fixes ("Add standard windows/doors for my rooms").
+- Readability on the dark theme: download buttons and file uploaders (sidebar and main), report tables, chart colours.
+- Logo: larger, bolder MATERIALS - COST - SCHEDULE line; bigger header and sidebar logo.
 
 **v0.16.0 — steel from the drawings (reinforcement details & BBS)**
 - `detailed_mto/rebar.py` reads reinforcement from structural / sectional sheets: bar bending schedules (bar mark,

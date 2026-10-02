@@ -44,15 +44,39 @@ def render_checklist(r: Readiness) -> None:
         st.markdown("**\u2753 Still needed from you**")
         if not r.missing:
             st.caption("Nothing - all set.")
-        for m in r.missing[:14]:
-            st.markdown(f"<div style='font-size:14px'>\u2b55 <b>{m.title}</b> - <span style='opacity:.75'>{m.detail}</span></div>",
-                        unsafe_allow_html=True)
-        if len(r.missing) > 14:
-            st.caption(f"... and {len(r.missing) - 14} more")
+        render_missing_fixes(r, st.session_state.get("project_inputs"), st.session_state.get("extracted_params"), key="top")
+
+
+FIX_WHERE = {
+    "scope": ("#cl-scope", "Part 1 - tick what you want, then press 'Confirm my scope'"),
+    "details": ("#cl-details", "Part 2 - pick an answer in the box marked \u2b55"),
+    "rooms": ("#cl-rooms", "Part 3 - the 'Rooms' or 'Doors & windows' table"),
+    "plot": ("", "Step 2 - enter the plot width and depth"),
+}
+
+
+def render_missing_fixes(r: Readiness, pi=None, params=None, key: str = "top") -> None:
+    """Each missing item in plain words, where to fix it (link that jumps there) and one-click fixes where possible."""
+    from ui import mto_views
+    for m in r.missing:
+        anchor, where = FIX_WHERE.get(m.where or "details", ("#cl-details", ""))
+        link = f" &nbsp;<a href='{anchor}' target='_self' style='color:#5CC8E8;font-weight:600'>\u2192 take me there</a>" if anchor else ""
+        st.markdown(f"<div style='margin:4px 0;font-size:14.5px'>\u2b55 <b>{m.title}</b> - {m.detail}<br>"
+                    f"<span style='opacity:.8;font-size:13px'>Where: {where}</span>{link}</div>", unsafe_allow_html=True)
+        if m.key in ("doors_list", "windows_list") and pi is not None:
+            kind = "door" if m.key == "doors_list" else "window"
+            if st.button(f"\u2795 Add standard {kind}s for my rooms (you can edit them)", key=f"fix_{m.key}_{key}"):
+                n = mto_views.add_standard_openings(pi, params, kind)
+                st.session_state["copilot_flash"] = f"Added {n} standard {kind}(s) - check their sizes in 'Doors & windows'."
+                st.rerun()
+        if m.key == "plot" and st.button("\u2190 Go to Step 2 to enter the plot size", key=f"fix_plot_{key}"):
+            from ui.state import go_to_step
+            go_to_step(2)
+            st.rerun()
 
 
 def render_scope_picker() -> None:
-    section("1\ufe0f\u20e3 What do you want in your house?",
+    section("1\ufe0f\u20e3 What do you want in your house?", anchor="cl-scope", subtitle=
             "Tick everything you want us to include. Only ticked items are estimated - nothing else is assumed.")
     sel = set(st.session_state.get("scope_sel") or ())
     ver = st.session_state.get("scope_ver", 0)
@@ -143,7 +167,7 @@ def render_detail_questions(p) -> None:
 
     n_sug = sum(1 for q in qs if q.id in suggested and q.id in answers)
     n_found = sum(1 for q in qs if q.id not in answers and is_found(q))
-    section("2\ufe0f\u20e3 A few details we need",
+    section("2\ufe0f\u20e3 A few details we need", anchor="cl-details", subtitle=
             "We have pre-selected the most common choice for each question (\u2b50 suggested) - check them and change "
             "anything that is different in your house. Your changes update the materials, cost and schedule.")
     st.caption(f"\u2b50 {n_sug} suggested \u00b7 \U0001f4d0 {n_found} from your drawings \u00b7 "
@@ -250,7 +274,7 @@ def render_detail_questions(p) -> None:
 
 
 def render_assumptions(r: Readiness) -> None:
-    section("4\ufe0f\u20e3 What we will assume",
+    section("4\ufe0f\u20e3 What we will assume", anchor="cl-assume", subtitle=
             "These values are not on your drawings and are not something an owner is expected to know. "
             "We use common Pakistani construction standards for them - please read and confirm.")
     with st.container(border=True):

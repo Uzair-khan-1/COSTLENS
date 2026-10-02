@@ -19,7 +19,9 @@ def step_header(step: int, show_tips: bool = True) -> None:
         st.markdown(tip_box_html("What to do here", lines, ur), unsafe_allow_html=True)
 
 
-def section(title: str, subtitle: str = "") -> None:
-    st.markdown(f"<div style='font-size:20px;font-weight:700;color:inherit;margin:14px 0 2px 0'>{title}</div>"
+def section(title: str, subtitle: str = "", anchor: str = "") -> None:
+    """A section heading; anchor gives it an id so other parts of the page can link to it (#anchor)."""
+    st.markdown((f"<div id='{anchor}' style='scroll-margin-top:70px'></div>" if anchor else "") +
+                f"<div style='font-size:20px;font-weight:700;color:inherit;margin:14px 0 2px 0'>{title}</div>"
                 + (f"<div style='opacity:.72;font-size:14px;margin-bottom:6px'>{subtitle}</div>" if subtitle else ""),
                 unsafe_allow_html=True)
