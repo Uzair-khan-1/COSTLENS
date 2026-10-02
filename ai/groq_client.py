@@ -118,13 +118,14 @@ def call_vision_model(
       - if Groq still fails (or no Groq key) and `keys` has a Gemini / OpenRouter key, the request
         continues on those providers
     """
-    from ai.llm import fit_images, friendly_error, is_rate_limited, is_too_large, retry_after_seconds, send_with_retries, text_tokens
+    from ai.llm import fit_images, is_overloaded, is_rate_limited, is_too_large, retry_after_seconds, send_with_retries, text_tokens
 
     if len(images) > config.MAX_IMAGES_PER_REQUEST:
         logger.warning("Capping %d images to %d for the request", len(images), config.MAX_IMAGES_PER_REQUEST)
         images = images[: config.MAX_IMAGES_PER_REQUEST]
     prompt_tok = text_tokens(system_prompt) + text_tokens(user_prompt) + 50
     last_exc: Optional[Exception] = None
+    errors: List[str] = []
 
     if api_key:
         client = get_client(api_key)
@@ -183,12 +184,13 @@ def call_vision_model(
                         time.sleep(delay)
                         attempt += 1
                         continue
+                    errors.append(f"Groq {model_id}: {_short(exc)}")
                     if _is_model_unavailable(exc) or _is_transient(exc) or is_too_large(exc):
                         logger.warning("Model %s failed (%s); trying the next model/provider", model_id, exc)
                         break
                     if not _other_providers(keys, "vision"):
                         logger.exception("Groq vision call failed")
-                        raise GroqClientError(f"Groq API call failed: {exc}") from exc
+                        raise GroqClientError("Groq API call failed - " + "; ".join(errors)) from exc
                     break
 
     for spec, client2, model2 in _other_providers(keys, "vision"):
@@ -199,10 +201,13 @@ def call_vision_model(
             return text
         except Exception as exc:  # noqa: BLE001
             last_exc = exc
+            errors.append(f"{spec.label} {model2}: {_short(exc)}")
             logger.warning("%s failed: %s", spec.label, exc)
     if last_exc is None:
         raise GroqClientError("No AI key configured. Add GROQ_API_KEY or GEMINI_API_KEY in Streamlit secrets.")
-    raise GroqClientError(f"AI call failed on all configured providers: {friendly_error(last_exc)} ({last_exc})") from last_exc
+    raise GroqClientError("AI call failed on all configured providers - " + "; ".join(errors)
+                          + (" (the AI services are busy - please try again in a few minutes)" if is_overloaded(last_exc) else "")
+                          ) from last_exc
 
 
 def call_text_model(
@@ -215,38 +220,42 @@ def call_text_model(
     json_mode: bool = False,
     keys=None,
 ) -> str:
-    from ai.llm import friendly_error, is_rate_limited, retry_after_seconds, send_with_retries
+    from ai.llm import is_rate_limited, retry_after_seconds, send_with_retries
 
     last_exc: Optional[Exception] = None
+    errors: List[str] = []
     if api_key:
         client = get_client(api_key)
-        waited = False
-        while True:
-            try:
-                kwargs = dict(
-                    model=model,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                )
-                if json_mode:
-                    kwargs["response_format"] = {"type": "json_object"}
-                response = client.chat.completions.create(**kwargs)
-                return response.choices[0].message.content
-            except Exception as exc:  # noqa: BLE001
-                last_exc = exc
-                wait = retry_after_seconds(exc)
-                if is_rate_limited(exc) and not waited and wait is not None and wait <= 20:
-                    time.sleep(wait + 0.5)
-                    waited = True
-                    continue
-                if not _other_providers(keys, "text"):
-                    logger.exception("Groq text call failed")
-                    raise GroqClientError(f"Groq API call failed: {exc}") from exc
-                break
+        # the configured model first, then Groq's other free text models (models get retired from time to time)
+        models = [model] + [m for m in GROQ_TEXT_FALLBACKS if m != model]
+        for mdl in models:
+            waited, use_json = False, json_mode
+            while True:
+                try:
+                    kwargs = dict(model=mdl, temperature=temperature, max_tokens=max_tokens,
+                                  messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}])
+                    if use_json:
+                        kwargs["response_format"] = {"type": "json_object"}
+                    response = client.chat.completions.create(**kwargs)
+                    return response.choices[0].message.content
+                except Exception as exc:  # noqa: BLE001
+                    last_exc = exc
+                    wait = retry_after_seconds(exc)
+                    if is_rate_limited(exc) and not waited and wait is not None and wait <= 20:
+                        time.sleep(wait + 0.5)
+                        waited = True
+                        continue
+                    if use_json and "response_format" in str(exc).lower() or (use_json and "json" in str(exc).lower()
+                                                                                and "400" in str(exc)):
+                        use_json = False  # this model does not support JSON mode - ask for plain JSON text
+                        continue
+                    errors.append(f"Groq {mdl}: {_short(exc)}")
+                    break
+            if not _model_problem(last_exc):
+                break  # a key / quota / network problem - other Groq models won't help
+        if not _other_providers(keys, "text"):
+            logger.error("Groq text call failed: %s", "; ".join(errors))
+            raise GroqClientError("Groq API call failed: " + "; ".join(errors)) from last_exc
     for spec, client2, model2 in _other_providers(keys, "text"):
         try:
             text, _note = send_with_retries(client2, model2, system_prompt, user_prompt, [], spec.request_token_budget,
@@ -254,6 +263,72 @@ def call_text_model(
             return text
         except Exception as exc:  # noqa: BLE001
             last_exc = exc
+            errors.append(f"{spec.label} {model2}: {_short(exc)}")
     if last_exc is None:
         raise GroqClientError("No AI key configured. Add GROQ_API_KEY or GEMINI_API_KEY in Streamlit secrets.")
-    raise GroqClientError(f"AI call failed on all configured providers: {friendly_error(last_exc)} ({last_exc})") from last_exc
+    raise GroqClientError("AI call failed on all configured providers - " + "; ".join(errors)) from last_exc
+
+
+GROQ_TEXT_FALLBACKS = ["openai/gpt-oss-120b", "llama-3.3-70b-versatile", "openai/gpt-oss-20b", "llama-3.1-8b-instant"]
+
+
+def _short(exc: Exception, n: int = 180) -> str:
+    """One line: status code + the provider's own message (no JSON noise)."""
+    import re as _re
+    text = str(exc)
+    m = _re.search(r"['\"]message['\"]\s*:\s*['\"]([^'\"]+)", text)
+    msg = m.group(1) if m else text
+    code = _re.search(r"Error code:\s*(\d{3})", text)
+    return ((f"{code.group(1)} " if code else "") + _re.sub(r"\s+", " ", msg))[:n]
+
+
+def _model_problem(exc: Optional[Exception]) -> bool:
+    if exc is None:
+        return False
+    t = str(exc).lower()
+    return any(k in t for k in ("404", "decommission", "no longer", "not found", "does not exist", "model_not_found",
+                                "not supported", "invalid model"))
+
+
+def check_ai_services(keys) -> List[dict]:
+    """Tiny test request to every configured AI service (text, and image for the drawing check).
+    -> [{"service", "model", "kind", "ok", "detail"}]"""
+    from PIL import Image as _Image
+    from ai.llm import provider_specs
+    out: List[dict] = []
+    img = _Image.new("RGB", (64, 64), "white")
+    if getattr(keys, "groq", ""):
+        client = get_client(keys.groq)
+        for kind, models in (("text", [config.GROQ_TEXT_MODEL]),
+                             ("image", [config.GROQ_VISION_MODEL, config.GROQ_VISION_MODEL_FALLBACK])):
+            for mdl in models:
+                content = "Reply with the single word OK."
+                if kind == "image":
+                    content = [{"type": "text", "text": "Reply with the single word OK."},
+                               {"type": "image_url", "image_url": {"url": _image_to_data_url(img)}}]
+                try:
+                    client.chat.completions.create(model=mdl, max_tokens=5, temperature=0,
+                                                   messages=[{"role": "user", "content": content}])
+                    out.append({"service": "Groq", "model": mdl, "kind": kind, "ok": True, "detail": "working"})
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    out.append({"service": "Groq", "model": mdl, "kind": kind, "ok": False, "detail": _short(exc)})
+    else:
+        out.append({"service": "Groq", "model": "-", "kind": "-", "ok": False, "detail": "no GROQ_API_KEY in the secrets"})
+    for name, key_attr in (("gemini", "gemini"), ("openrouter", "openrouter")):
+        key = getattr(keys, key_attr, "")
+        spec = provider_specs()[name]
+        if not key:
+            if name == "gemini":
+                out.append({"service": spec.label, "model": "-", "kind": "-", "ok": False,
+                            "detail": "no GEMINI_API_KEY in the secrets"})
+            continue
+        try:
+            from ai.llm import OpenAICompatClient
+            client = OpenAICompatClient(spec.base_url, key, timeout=30)
+            client.chat.completions.create(model=spec.text_model, max_tokens=5, temperature=0,
+                                           messages=[{"role": "user", "content": "Reply with the single word OK."}])
+            out.append({"service": spec.label, "model": spec.text_model, "kind": "text + image", "ok": True, "detail": "working"})
+        except Exception as exc:  # noqa: BLE001
+            out.append({"service": spec.label, "model": spec.text_model, "kind": "text + image", "ok": False, "detail": _short(exc)})
+    return out

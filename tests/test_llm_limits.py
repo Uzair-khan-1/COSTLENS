@@ -181,3 +181,72 @@ def test_retired_model_is_replaced_automatically():
     calls.clear()
     llm.send_with_retries(Client(), "gemini-2.5-flash", "sys", "hi", [], 10000, 1024, 100, False)
     assert calls == ["gemini-3.8-flash"]  # remembered for the rest of the run
+
+
+def test_groq_tries_other_models_and_reports_every_provider(monkeypatch):
+    from ai import groq_client
+    from ai.llm import LLMKeys
+
+    class E(Exception):
+        pass
+
+    tried = []
+
+    class Completions:
+        def __init__(self, ok_model):
+            self.ok = ok_model
+
+        def create(self, **kw):
+            tried.append(kw["model"])
+            if kw["model"] != self.ok:
+                raise E("Error code: 400 - {'error': {'message': 'The model `%s` has been decommissioned and is no longer "
+                        "supported.', 'code': 'model_decommissioned'}}" % kw["model"])
+            return type("R", (), {"choices": [type("C", (), {"message": type("M", (), {"content": "ok"})()})()]})()
+
+    def client(ok):
+        return type("Cl", (), {"chat": type("Ch", (), {"completions": Completions(ok)})()})()
+
+    # 1) the configured Groq model is retired -> the next free Groq model answers
+    monkeypatch.setattr(groq_client, "get_client", lambda key: client("llama-3.3-70b-versatile"))
+    out = groq_client.call_text_model("gsk_x", "sys", "hi", model="openai/gpt-oss-120b", keys=LLMKeys("gsk_x", "", ""))
+    assert out == "ok" and tried[:2] == ["openai/gpt-oss-120b", "llama-3.3-70b-versatile"]
+
+    # 2) everything fails -> the message names each provider and its reason
+    monkeypatch.setattr(groq_client, "get_client", lambda key: client("none"))
+    monkeypatch.setattr(groq_client, "_other_providers", lambda keys, kind: [])
+    try:
+        groq_client.call_text_model("gsk_x", "sys", "hi", keys=LLMKeys("gsk_x", "", ""))
+        raise AssertionError("should fail")
+    except groq_client.GroqClientError as exc:
+        msg = str(exc)
+        assert "Groq openai/gpt-oss-120b: 400 The model" in msg and "decommissioned" in msg
+
+
+def test_overloaded_gemini_is_retried_then_another_model(monkeypatch):
+    """503 'high demand' -> wait and retry the same model, then a sibling model - instead of failing at once."""
+    from ai import llm
+    monkeypatch.setattr(llm, "OVERLOAD_WAITS", (0.0, 0.0))
+    monkeypatch.setattr(llm.time, "sleep", lambda s: None)
+
+    class E(Exception):
+        status_code = 503
+
+    tried = []
+
+    class Completions:
+        def create(self, **kw):
+            tried.append(kw["model"])
+            if kw["model"] == "gemini-3.8-flash":
+                raise E("Error code: 503 - This model is currently experiencing high demand. Please try again later.")
+            return type("R", (), {"choices": [type("C", (), {"message": type("M", (), {"content": "ok"})()})()]})()
+
+    class Models:
+        def list(self):
+            return [type("M", (), {"id": n})() for n in ("models/gemini-3.8-flash", "models/gemini-3.8-flash-lite",
+                                                            "models/gemini-3.5-flash", "models/gemini-3.8-pro")]
+
+    client = type("Cl", (), {"chat": type("Ch", (), {"completions": Completions()})(), "models": Models()})()
+    llm.MODEL_REPLACEMENTS.clear()
+    text, note = llm.send_with_retries(client, "gemini-3.8-flash", "s", "u", [], 10000, 1024, 100, False)
+    assert text == "ok" and tried[:3] == ["gemini-3.8-flash"] * 3 and tried[3] != "gemini-3.8-flash"
+    assert "overloaded" in note

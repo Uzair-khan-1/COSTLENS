@@ -46,7 +46,18 @@ def render_sidebar() -> None:
         active = [n for n, k in (("Groq", "groq_api_key"), ("Gemini", "gemini_api_key"), ("OpenRouter", "openrouter_api_key"))
                   if st.session_state.get(k)]
         if active:
-            st.caption("\U0001f916 AI assistant: ready")
+            st.caption("\U0001f916 AI assistant: " + " \u2192 ".join(active) + " (tried in this order)")
+            with st.expander("\U0001fa7a Test AI services"):
+                st.caption("Sends a tiny test to each AI service and shows whether it answers.")
+                if st.button("Run the test", key="ai_test_btn", width="stretch"):
+                    from ai.groq_client import check_ai_services
+                    from ai.llm import keys_from_mapping
+                    with st.spinner("Testing..."):
+                        st.session_state["ai_test_result"] = check_ai_services(keys_from_mapping(st.session_state))
+                for r in st.session_state.get("ai_test_result") or []:
+                    icon = "\u2705" if r["ok"] else "\u274c"
+                    st.markdown(f"{icon} **{r['service']}** ({r['kind']}) - "
+                                f"<span style='font-size:12px'>{r['model']}: {r['detail']}</span>", unsafe_allow_html=True)
         else:
             st.caption("\u26a0\ufe0f AI assistant not set up - the administrator must add GROQ_API_KEY / GEMINI_API_KEY "
                        "in Streamlit secrets.")

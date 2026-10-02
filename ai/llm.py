@@ -272,12 +272,22 @@ def compat_client(spec: ProviderSpec, key: str) -> OpenAICompatClient:
 MODEL_REPLACEMENTS: Dict[str, str] = {}
 
 
+def is_overloaded(exc: Exception) -> bool:
+    """Temporary capacity problems: 503 'high demand' / UNAVAILABLE, 502, 529 'overloaded', 500."""
+    t = str(exc).lower()
+    return status_code(exc) in (500, 502, 503, 529) or any(k in t for k in ("high demand", "overloaded", "unavailable",
+                                                                           "error code: 503", "error code: 502"))
+
+
+OVERLOAD_WAITS = (3.0, 8.0)  # seconds to wait before retrying the same model
+
+
 def _retired(exc: Exception) -> bool:
     msg = str(exc).lower()
     return status_code(exc) == 404 or ("no longer available" in msg) or ("model" in msg and "not found" in msg)
 
 
-def replacement_model(client, model: str, exc: Exception) -> Optional[str]:
+def replacement_model(client, model: str, exc: Exception, allow_lite: bool = False) -> Optional[str]:
     m = re.search(r"use\s+(?:the\s+)?(?:model\s+)?models/([A-Za-z0-9._\-]+)", str(exc))
     if m and m.group(1) != model:
         return m.group(1)
@@ -288,7 +298,8 @@ def replacement_model(client, model: str, exc: Exception) -> Optional[str]:
         for mm in client.models.list():
             name = getattr(mm, "id", "") or ""
             name = name.split("/")[-1]
-            if not all(w in name for w in words) or any(x in name for x in ("lite", "preview", "exp", "tts", "image", "audio")):
+            skip = ("preview", "exp", "tts", "image", "audio") + (() if allow_lite else ("lite",))
+            if not all(w in name for w in words) or any(x in name for x in skip):
                 continue
             v = re.search(r"(\d+(?:\.\d+)?)", name)
             ver = float(v.group(1)) if v else 0.0
@@ -306,6 +317,7 @@ def send_with_retries(client, model: str, system_prompt: str, user_prompt: str, 
     Raises the last exception otherwise."""
     model = MODEL_REPLACEMENTS.get(model, model)
     swapped, swap_note = False, ""
+    overload_tries = 0
     prompt_tok = text_tokens(system_prompt) + text_tokens(user_prompt) + 50
     dim = start_dim
     shrink_budget = budget
@@ -337,6 +349,17 @@ def send_with_retries(client, model: str, system_prompt: str, user_prompt: str, 
             if json_mode and status_code(exc) == 400 and "response_format" in str(exc).lower():
                 json_mode = False  # some free models do not support JSON mode
                 continue
+            if is_overloaded(exc):
+                if overload_tries < len(OVERLOAD_WAITS):  # busy: wait a little and try the same model again
+                    time.sleep(OVERLOAD_WAITS[overload_tries])
+                    overload_tries += 1
+                    continue
+                if not swapped:  # still busy: try another model of the same family (e.g. the lite version)
+                    new = replacement_model(client, model, exc, allow_lite=True)
+                    if new:
+                        swap_note = f"{model} was overloaded - answered by {new}"
+                        model, swapped, overload_tries = new, True, 0
+                        continue
             if not swapped and _retired(exc):
                 new = replacement_model(client, model, exc)
                 if new:
