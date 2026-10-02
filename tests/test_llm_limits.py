@@ -150,3 +150,34 @@ def test_copilot_switches_provider_on_limit(monkeypatch):
     assert reply.text == "Answer from Gemini" and not reply.error
     reply = agent.run_agent("k", state, [], "hello", keys=llm.LLMKeys(groq="k"))
     assert reply.error and "limit" in reply.error
+
+
+def test_retired_model_is_replaced_automatically():
+    """Google: '404 ... gemini-2.5-flash is no longer available ... use models/gemini-3.8-flash' -> switch and remember."""
+    from ai import llm
+
+    class E(Exception):
+        status_code = 404
+
+    calls = []
+
+    class Completions:
+        def create(self, **kw):
+            calls.append(kw["model"])
+            if kw["model"] == "gemini-2.5-flash":
+                raise E("Error code: 404 - This model models/gemini-2.5-flash is no longer available to new users. "
+                        "Please update your code to use models/gemini-3.8-flash for the latest features.")
+
+            class R:
+                choices = [type("C", (), {"message": type("M", (), {"content": "ok"})()})()]
+            return R()
+
+    class Client:
+        chat = type("Chat", (), {"completions": Completions()})()
+
+    llm.MODEL_REPLACEMENTS.clear()
+    text, note = llm.send_with_retries(Client(), "gemini-2.5-flash", "sys", "hi", [], 10000, 1024, 100, False)
+    assert text == "ok" and calls == ["gemini-2.5-flash", "gemini-3.8-flash"] and "retired" in note
+    calls.clear()
+    llm.send_with_retries(Client(), "gemini-2.5-flash", "sys", "hi", [], 10000, 1024, 100, False)
+    assert calls == ["gemini-3.8-flash"]  # remembered for the rest of the run

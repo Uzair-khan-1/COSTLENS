@@ -78,9 +78,9 @@ def provider_specs() -> Dict[str, ProviderSpec]:
     return {
         "gemini": ProviderSpec(
             "gemini", "https://generativelanguage.googleapis.com/v1beta/openai",
-            g("GEMINI_VISION_MODEL", "") or getattr(config, "GEMINI_MODEL", "gemini-2.5-flash"),
-            g("GEMINI_TEXT_MODEL", "") or getattr(config, "GEMINI_MODEL", "gemini-2.5-flash"),
-            g("GEMINI_TOOL_MODEL", "") or getattr(config, "GEMINI_MODEL", "gemini-2.5-flash"),
+            g("GEMINI_VISION_MODEL", "") or g("GEMINI_MODEL", "") or getattr(config, "GEMINI_MODEL", "gemini-3.8-flash"),
+            g("GEMINI_TEXT_MODEL", "") or g("GEMINI_MODEL", "") or getattr(config, "GEMINI_MODEL", "gemini-3.8-flash"),
+            g("GEMINI_TOOL_MODEL", "") or g("GEMINI_MODEL", "") or getattr(config, "GEMINI_MODEL", "gemini-3.8-flash"),
             int(getattr(config, "GEMINI_REQUEST_TOKEN_BUDGET", 60000)), 1600, "Google Gemini"),
         "openrouter": ProviderSpec(
             "openrouter", "https://openrouter.ai/api/v1",
@@ -266,10 +266,46 @@ def compat_client(spec: ProviderSpec, key: str) -> OpenAICompatClient:
 # ---------------------------------------------------------------------------
 # generic "send one request with budget + retries" used for non-Groq providers
 # ---------------------------------------------------------------------------
+# AI providers retire models (e.g. Google: "gemini-2.5-flash is no longer available ... use models/gemini-3.8-flash").
+# When that happens the replacement is taken from the error message - or, failing that, the newest matching model in
+# the provider's model list - and remembered for the rest of the run.
+MODEL_REPLACEMENTS: Dict[str, str] = {}
+
+
+def _retired(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return status_code(exc) == 404 or ("no longer available" in msg) or ("model" in msg and "not found" in msg)
+
+
+def replacement_model(client, model: str, exc: Exception) -> Optional[str]:
+    m = re.search(r"use\s+(?:the\s+)?(?:model\s+)?models/([A-Za-z0-9._\-]+)", str(exc))
+    if m and m.group(1) != model:
+        return m.group(1)
+    try:  # newest model of the same family in the provider's list (e.g. the highest "gemini-X.Y-flash")
+        fam = re.sub(r"[\d.]+", "", model.split("/")[-1]).strip("-")  # "gemini--flash" -> family words
+        words = [w for w in fam.split("-") if w]
+        best, best_v = None, -1.0
+        for mm in client.models.list():
+            name = getattr(mm, "id", "") or ""
+            name = name.split("/")[-1]
+            if not all(w in name for w in words) or any(x in name for x in ("lite", "preview", "exp", "tts", "image", "audio")):
+                continue
+            v = re.search(r"(\d+(?:\.\d+)?)", name)
+            ver = float(v.group(1)) if v else 0.0
+            if ver > best_v and name != model:
+                best, best_v = name, ver
+        return best
+    except Exception:  # noqa: BLE001 - listing is optional
+        return None
+
+
 def send_with_retries(client, model: str, system_prompt: str, user_prompt: str, images: Sequence[Image.Image],
                       budget: int, start_dim: int, max_tokens: int, json_mode: bool, temperature: float = 0.1,
                       max_wait_s: float = 20.0) -> Tuple[str, str]:
-    """Returns (text, note). Shrinks on 413, waits on short 429s. Raises the last exception otherwise."""
+    """Returns (text, note). Shrinks on 413, waits on short 429s, switches to the replacement of a retired model.
+    Raises the last exception otherwise."""
+    model = MODEL_REPLACEMENTS.get(model, model)
+    swapped, swap_note = False, ""
     prompt_tok = text_tokens(system_prompt) + text_tokens(user_prompt) + 50
     dim = start_dim
     shrink_budget = budget
@@ -286,7 +322,7 @@ def send_with_retries(client, model: str, system_prompt: str, user_prompt: str, 
             kwargs["response_format"] = {"type": "json_object"}
         try:
             resp = client.chat.completions.create(**kwargs)
-            return resp.choices[0].message.content or "", note
+            return resp.choices[0].message.content or "", "; ".join(x for x in (swap_note, note) if x)
         except Exception as exc:  # noqa: BLE001
             if is_too_large(exc) and imgs:
                 shrink_budget = int(shrink_budget * 0.6)
@@ -301,5 +337,12 @@ def send_with_retries(client, model: str, system_prompt: str, user_prompt: str, 
             if json_mode and status_code(exc) == 400 and "response_format" in str(exc).lower():
                 json_mode = False  # some free models do not support JSON mode
                 continue
+            if not swapped and _retired(exc):
+                new = replacement_model(client, model, exc)
+                if new:
+                    MODEL_REPLACEMENTS[model] = new
+                    swap_note = f"model {model} retired by the provider - using {new}"
+                    model, swapped = new, True
+                    continue
             raise
     raise LLMError("The AI request could not be made small enough for the free limits.")

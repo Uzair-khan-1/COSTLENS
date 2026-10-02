@@ -14,7 +14,7 @@ from pathlib import Path
 APP_NAME = "CostLens"
 APP_TAGLINE = "Materials \u2022 Cost \u2022 Schedule"
 APP_FULL_NAME = "CostLens - Drawing-based Material Take-Off for 5-10 marla houses"
-APP_VERSION = "0.17.0"
+APP_VERSION = "0.17.1"
 
 # Brand assets (see assets/generate_logo.py to regenerate/tweak).
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
@@ -70,7 +70,7 @@ MAX_IMAGE_DIMENSION = 1600
 # minute per model; requests are shrunk (image resolution, then number of pages) to stay below this.
 GROQ_REQUEST_TOKEN_BUDGET = 5500
 # Optional extra free providers (keys entered in the sidebar or set as secrets GEMINI_API_KEY / OPENROUTER_API_KEY)
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL = "gemini-3.8-flash"  # override with the GEMINI_MODEL secret if Google renames it again
 GEMINI_REQUEST_TOKEN_BUDGET = 60000
 OPENROUTER_VISION_MODEL = "qwen/qwen2.5-vl-72b-instruct:free"
 OPENROUTER_TEXT_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
