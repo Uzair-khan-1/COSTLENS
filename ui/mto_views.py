@@ -438,11 +438,14 @@ def render_takeoff(res: DetailedResult) -> None:
             "The Bill of Quantities (work items) and the cost are in the next step.")
     cards = []
     import math
+    rb = getattr(res.project, "rebar", None)
+    steel_sub = ("from your bar bending schedule" if (rb is not None and rb.bbs) else
+                 "bar by bar from your drawings" if (rb is not None and rb.any()) else "estimated - no bar details")
     for label, ids, unit, div in KEY_TOTALS:
         v = _total(res, ids) / div
         if v > 0:  # rounded UP like the shopping list, so the card and the list show the same number
             cards.append((MAIN_ICONS.get(label, "\u2022"), label, f"{math.ceil(v * 100) / 100:,.2f} {unit}" if div > 1
-                          else f"{math.ceil(v - 1e-9):,.0f} {unit}", MAIN_SUB.get(label, "")))
+                          else f"{math.ceil(v - 1e-9):,.0f} {unit}", steel_sub if label == "Steel" else MAIN_SUB.get(label, "")))
     st.markdown(stat_cards_html(cards), unsafe_allow_html=True)
     st.caption(f"\u2705 {quantified} materials calculated \u00b7 {counts.get(ST_CALC_ASSUMED, 0)} use a standard size or count "
                f"(marked 'check') \u00b7 {counts.get(ST_NEEDS_INPUT, 0)} need your input \u00b7 prices and the Bill of Quantities are in Step 5.")

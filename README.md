@@ -1,4 +1,4 @@
-# CostLens — *Materials • Cost • Schedule* (v0.15.0)
+# CostLens — *Materials • Cost • Schedule* (v0.16.0)
 
 A drawing-based **Material Take-Off (MTO)** tool for 5-10 marla houses in
 Pakistan. Upload the complete drawing set (CAD-exported PDFs work best); the
@@ -571,6 +571,19 @@ lines). See **[DETAILED_MTO.md](DETAILED_MTO.md)**.
 ---
 
 ## 8. Changelog
+
+**v0.16.0 — steel from the drawings (reinforcement details & BBS)**
+- `detailed_mto/rebar.py` reads reinforcement from structural / sectional sheets: bar bending schedules (bar mark,
+  dia, number, length, weight), member details and schedules ("6-#5 + #3 rings @ 9 in c/c", "#4 @ 6 in c/c both ways",
+  "6-12mm, 8mm @ 150 c/c", "T10 @ 200"), member sizes and counts (16 x C1 8 in sq, F1 4'-0" x 4'-0"), concrete volumes
+  printed with members, and a total steel weight printed on the drawings.
+- Steel priority per member: 1) BBS as drawn, 2) bar-by-bar from the details (bars x length incl. laps 50d, hooks 10d,
+  covers; ties/rings = run/spacing + 1), 3) thumb-rule kg/cft only where nothing is drawn - every line says which.
+- Column/footing counts and sizes from the structural sheets replace defaults; beam length from a printed beam volume;
+  no beams invented when the structural sheets show none; steel check against the drawing's printed total.
+- Walls that cannot be traced on a plan are worked out from the room sizes; no mumty is invented for a single-storey
+  building read from drawings.
+- Servant quarter test set: 4,250 kg calculated from the bar details vs 3,956 kg printed on the drawing (+7%).
 
 **v0.15.0 — dark theme, clearer logo, easier questions**
 - Dark theme matching the sidebar; cards, tips and header restyled; sidebar steps left-aligned.
