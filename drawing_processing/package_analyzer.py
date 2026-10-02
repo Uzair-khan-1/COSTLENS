@@ -1239,7 +1239,18 @@ def apply_package_facts(
     gconf = min((f.geometry_confidence for f in floors), key=lambda c: ["Low", "Medium", "High"].index(c.value), default=ConfidenceLevel.MEDIUM)
     scales = ", ".join(sorted({f.scale_label for f in floors if f.scale_label}))
     wl, _ = avg("wall_length_ft")
-    if wl:
+    # walls that could not be traced (filled blocks, hatching): use the room sizes, like the quantity builder does
+    room_est = []
+    for f in floors:
+        enclosed = [r for r in (f.rooms or []) if len(r) >= 4 and r[3] != "open" and r[1] > 0 and r[2] > 0]
+        if enclosed:
+            room_est.append(0.5 * sum(2 * (r[1] + r[2]) for r in enclosed) + 0.5 * (f.perimeter_ft or 0.0))
+    est_wl = sum(room_est) / len(room_est) if room_est else None
+    if est_wl and (not wl or wl < 0.5 * est_wl):
+        p.walls.total_length_per_floor_m = est(est_wl * FT, ConfidenceLevel.MEDIUM,
+                                               f"{L(est_wl)} worked out from the room sizes (wall lines could not be traced)")
+        filled.append("total wall length (from room sizes)")
+    elif wl:
         p.walls.total_length_per_floor_m = est(wl * FT, gconf, f"{L(wl)} measured from wall lines (scale {scales})")
         filled.append("total wall length")
     per, _ = avg("perimeter_ft")

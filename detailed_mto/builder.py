@@ -16,6 +16,7 @@ Nothing here modifies the objects passed in.
 from __future__ import annotations
 
 import math
+import re
 from typing import Optional
 
 from detailed_mto.model import ASSUMED, HIGH, LOW, MEDIUM, USER, DetailedProject, Floor, OpeningGroup, Options, Room
@@ -144,9 +145,23 @@ def build_project(project_inputs, params, kb: KnowledgeBase, facts=None, files: 
             if not ff.thickness_breakdown and ff.wall_length_ft:
                 w9, w45 = ff.wall_length_ft * 0.55, ff.wall_length_ft * 0.45
             cov = ff.covered_sqft or 0.0
-            p.floors.append(Floor(k, FLOOR_NAMES.get(k, k.title()), cov, ff.perimeter_ft or 4 * math.sqrt(max(cov, 1)),
-                                  w9, w45, h_floor, source=ff.source or ff.covered_source,
-                                  confidence=getattr(ff.geometry_confidence, "value", MEDIUM)))
+            ext = ff.perimeter_ft or 4 * math.sqrt(max(cov, 1))
+            conf = getattr(ff.geometry_confidence, "value", MEDIUM)
+            # walls that could not be traced on the plan (e.g. drawn as filled blocks): estimate them from the room
+            # sizes read on the same plan - half of the room perimeters plus half of the outer wall
+            enclosed = [r for r in (ff.rooms or []) if len(r) >= 4 and r[3] != "open" and r[1] > 0 and r[2] > 0]
+            if enclosed:
+                est = 0.5 * sum(2 * (r[1] + r[2]) for r in enclosed) + 0.5 * ext
+                if (w9 + w45) < 0.5 * est:
+                    if wall_t_in >= 7:
+                        w9, w45 = est, 0.0
+                    else:
+                        w9, w45 = ext, max(est - ext, 0.0)
+                    conf = MEDIUM
+                    p.assumptions.append(f"{FLOOR_NAMES.get(k, k.title())}: the walls could not be measured on the plan, so "
+                                         f"their length ({est:,.0f} ft) is worked out from the {len(enclosed)} room sizes.")
+            p.floors.append(Floor(k, FLOOR_NAMES.get(k, k.title()), cov, ext, w9, w45, h_floor,
+                                  source=ff.source or ff.covered_source, confidence=conf))
     else:
         area = _est(params.plinth_area_per_floor_sqm, 90) * SQM_TO_SFT
         wall_len = _est(params.walls.total_length_per_floor_m, 60) * M_TO_FT
@@ -161,7 +176,12 @@ def build_project(project_inputs, params, kb: KnowledgeBase, facts=None, files: 
     # mumty
     second = fact("plot", "covered_second_sqft")
     roof_f = fx.floors.get("roof") if fx is not None else None
-    mumty_area = second[0] if second else (180.0 if len(p.floors) >= 1 else 0.0)
+    # a mumty only when the drawings show one (second-floor area, a roof plan, a stair or mumty room) - or, without
+    # drawings, for a multi-storey house; a single-storey building read from drawings gets no invented mumty
+    shows_stair = fx is not None and any(any(len(r) >= 1 and re.search(r"stair|mumty", str(r[0]), re.I) for r in (ff.rooms or []))
+                                         for ff in fx.floors.values())
+    want_default = (roof_f is not None or shows_stair) if storey_keys else len(p.floors) >= 2
+    mumty_area = second[0] if second else (180.0 if (len(p.floors) >= 1 and want_default) else 0.0)
     if mumty_area and mumty_area < 400 and not floors_override:
         per = 4 * math.sqrt(mumty_area) * 1.05
         p.floors.append(Floor("roof", "Mumty", mumty_area, per, per, 0.0, p.v("H_MUMTY"), is_mumty=True,
@@ -313,6 +333,7 @@ def build_project(project_inputs, params, kb: KnowledgeBase, facts=None, files: 
           "= 9in wall CL length per storey (BCP zone 2B)", ASSUMED,
           "Not drawn in the sample set - recommended for load-bearing masonry in Islamabad/Rawalpindi.")
     p.set("BAND_D_IN", "Band depth", 6, "in", "Structure", "Default", ASSUMED)
+    _apply_structural_drawing(p, scan)
 
     # ------------------------------------------------------------------ stair
     stairs = p.rooms_of("Staircase")
@@ -460,3 +481,47 @@ def build_project(project_inputs, params, kb: KnowledgeBase, facts=None, files: 
         else:
             p.assumptions.insert(0, "No drawings uploaded - quantities are based on a typical house for the chosen plot size.")
     return p
+
+
+def _apply_structural_drawing(p, scan) -> None:
+    """Column / footing counts and sizes printed on the structural sheets (with the reinforcement) win over defaults;
+    the reinforcement itself is kept on the project for the steel calculation (quantities.py, WI-RF-*)."""
+    rb = getattr(scan, "rebar", None) if scan is not None else None
+    if rb is None:
+        return
+    p.rebar = rb
+    src = "Structural drawing"
+    col = rb.members.get("column")
+    if col is not None:
+        if col.count:
+            p.set("COL_N", "Columns (count)", col.count, "Nos", "Structure", src, HIGH)
+        if col.size_in:
+            p.set("COL_B_IN", "Column width b", col.size_in[0], "in", "Structure", src, HIGH)
+            p.set("COL_D_IN", "Column depth d", col.size_in[1], "in", "Structure", src, HIGH)
+    ftg = rb.members.get("footing")
+    if ftg is not None:
+        n = ftg.count or (col.count if col is not None else None)
+        if n:
+            p.set("FTG_N", "Isolated column footings", n, "Nos", "Foundation", src, HIGH)
+        if ftg.size_in:
+            p.set("FTG_L", "Footing length", ftg.size_in[0] / 12, "ft", "Foundation", src, HIGH)
+            p.set("FTG_B", "Footing width", ftg.size_in[1] / 12, "ft", "Foundation", src, HIGH)
+    # beams: when only a beam schedule with its concrete volume is given (no beam layout), the beam length follows
+    # from that volume - instead of the default number of beams
+    beam = rb.members.get("beam")
+    if beam is not None and beam.volume_cft and p.conf("BEAM_N") not in (HIGH, USER):
+        b_in = beam.width_in or p.v("COL_B_IN") or 9.0
+        d_in = max(p.v("BEAM_D_IN"), 12.0)
+        run = beam.volume_cft / ((b_in / 12) * max(d_in - p.v("T_SLAB_IN"), 6.0) / 12)
+        p.set("BEAM_N", "Beams per slab level", 1, "Nos", "Structure", src + " (beam schedule)", MEDIUM)
+        p.set("BEAM_LEN", "Average beam length", run / max(len(p.storeys), 1), "ft", "Structure",
+              f"{src}: beam concrete {beam.volume_cft:.1f} cft / section", MEDIUM)
+        p.set("BEAM_B_IN", "Beam width", b_in, "in", "Structure", src, MEDIUM)
+    elif beam is None and col is not None and col.count and p.conf("BEAM_N") not in (HIGH, USER):
+        # structural sheets were read and show no beams: none are invented
+        p.set("BEAM_N", "Beams per slab level", 0, "Nos", "Structure", src + " (no beams shown)", MEDIUM)
+    # bands detailed on the drawings are built even if seismic bands were not chosen
+    for kind in ("lintel", "roof_band"):
+        if kind in rb.members and rb.members[kind].has_detail() and p.v("BAND_LEN") <= 0:
+            p.set("BAND_LEN", "Lintel band length (9in walls)", sum(f.wall9_len_ft for f in p.storeys), "rft", "Structure",
+                  "Band detailed on the structural drawing", MEDIUM)

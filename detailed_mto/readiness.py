@@ -111,11 +111,26 @@ def evaluate(p: DetailedProject, selected: set, answers: Dict[str, object], scop
     if "windows" in selected and not [o for o in p.windows() if o.kind == "window"]:
         r.missing.append(Check("windows_list", "Windows", "No windows in the list - add them in 'Doors & windows'.", "rooms"))
 
-    # ---- structure without structural drawings
-    if p.drawing_mode != "cad" or not _is_known(p.params.get("COL_N")):
+    # ---- steel: from the drawings' bar details / BBS, or thumb rules
+    rb = getattr(p, "rebar", None)
+    names = {"footing": "footings", "column": "columns", "plinth": "plinth band/beams", "fdn_tie": "foundation tie beams",
+             "beam": "beams", "slab": "roof slab", "lintel": "lintel/door band", "roof_band": "roof band",
+             "stair": "stairs", "tank": "tanks"}
+    if rb is not None and rb.bbs:
+        r.found.append(Check("bbs", "Steel (sarya)", f"bar bending schedule on your drawings ({len(rb.bbs)} bar marks)"))
+    elif rb is not None and rb.any():
+        drawn = [names[k] for k, m in rb.members.items() if m.has_detail() and k in names]
+        r.found.append(Check("rebar", "Steel (sarya)", "bar sizes & spacings from your drawings: " + ", ".join(drawn)))
+        missing = [v for k, v in names.items() if k not in rb.members and k in ("stair", "tank")]
+        r.assumptions.append(Check("steel", "Steel (sarya)",
+                                   "Worked out bar by bar from your drawings for " + ", ".join(drawn) + ". Covers and laps "
+                                   "use standard values (1.5 in cover, 50 x bar size laps)"
+                                   + (f"; {', '.join(missing)} and chajjas use thumb rules (no details drawn)." if missing else ".")))
+    elif p.drawing_mode != "cad" or not _is_known(p.params.get("COL_N")):
         r.assumptions.append(Check("steel", "Steel (sarya) & concrete sizes",
-                                   "No structural (engineer's) details were found, so column, beam and slab steel is worked out with "
-                                   "standard kg-per-cubic-foot ratios. Your engineer's bar schedule would make this exact."))
+                                   "No reinforcement details or bar bending schedule were found, so steel is worked out with "
+                                   "standard kg-per-cubic-foot ratios. Upload your engineer's structural drawings or BBS to make "
+                                   "this exact."))
 
     # ---- remaining engineering standards
     def _plain(k: str) -> str:

@@ -238,6 +238,18 @@ def compute(project: DetailedProject, kb: KnowledgeBase, scope: Optional[str] = 
         except Exception as exc:  # a single bad input must not kill the whole schedule
             wq[wid] = _q.WIQty(0.0, ASSUMED, f"Calculation error: {exc}", selected=False)
 
+    # Steel cross-check: a total steel weight printed on the drawings vs the steel calculated from their details
+    rb = getattr(p, "rebar", None)
+    if rb is not None and getattr(rb, "stated_total_kg", None):
+        drawn = sum(w.qty for k, w in wq.items() if k.startswith("WI-RF") and k not in ("WI-RF-05", "WI-RF-07")
+                    and w.selected)
+        diff = (drawn / rb.stated_total_kg - 1) * 100 if rb.stated_total_kg else 0.0
+        note = (f"Steel check: the drawings state a total of {rb.stated_total_kg:,.0f} kg ({rb.stated_total_text}); "
+                f"CostLens calculated {drawn:,.0f} kg from the bar details for the same members ({diff:+.0f}%)"
+                + (" - close agreement." if abs(diff) <= 10 else
+                   " - please check member lengths/heights and the drawing's total before buying steel."))
+        p.conflicts = [c for c in p.conflicts if not c.startswith("Steel check:")] + [note]
+
     # When nothing was read from drawings (scans / no upload) no quantity may claim drawing-level confidence.
     unread = getattr(p, "drawing_mode", "cad") in ("scanned", "none")
     if unread:

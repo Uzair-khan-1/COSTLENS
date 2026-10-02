@@ -137,6 +137,7 @@ class DetailedProject:
     # "cad" = vector drawings were read; "scanned" = drawings uploaded but unreadable
     # (images / scans); "none" = no drawings uploaded (plot template / manual values)
     drawing_mode: str = "cad"
+    rebar: object = None  # detailed_mto.rebar.RebarFacts read from the structural drawings (None = not available)
 
     # --- param helpers ---------------------------------------------------
     def set(self, key, label, value, unit, group, source="Default", confidence=ASSUMED, note="") -> None:

@@ -13,7 +13,7 @@ import math
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List
 
-from detailed_mto.model import ASSUMED, HIGH, MEDIUM, DetailedProject, worst
+from detailed_mto.model import ASSUMED, HIGH, MEDIUM, USER, DetailedProject, worst
 from knowledge.loader import KnowledgeBase
 
 
@@ -298,29 +298,174 @@ def _cn13(p, kb, q):
 
 
 # ============================== REINFORCEMENT ===============================
-def _ratio(wi_id, src, kid, label):
-    @wi(wi_id)
-    def _fn(p, kb, q):
-        vol = sum(q[s].qty for s in src)
-        k = kb.k(kid)
-        return WIQty(vol * k, worst(*(q[s].confidence for s in src), MEDIUM),
-                     f"{label} {_f(vol)} cft x {_f(k)} kg/cft ({kid}; replace with BBS when available)")
-    return _fn
+def _ratio_qty(q, kb, src, kid, label):
+    vol = sum(q[s].qty for s in src)
+    k = kb.k(kid)
+    return vol * k, f"{label} {_f(vol)} cft x {_f(k)} kg/cft (thumb rule {kid})"
 
 
-_ratio("WI-RF-01", ["WI-CN-03"], "K_ST_FTG", "footing RCC")
-_ratio("WI-RF-02", ["WI-CN-05"], "K_ST_COL", "column RCC")
-_ratio("WI-RF-04", ["WI-CN-07"], "K_ST_SLAB", "slab RCC")
-_ratio("WI-RF-05", ["WI-CN-08"], "K_ST_STAIR", "stair RCC")
-_ratio("WI-RF-06", ["WI-CN-09", "WI-CN-10"], "K_ST_LINTEL", "lintel/band/chajja RCC")
-_ratio("WI-RF-07", ["WI-CN-11"], "K_ST_TANK", "tank RCC")
+# Steel priority: 1) bar bending schedule on the drawings, 2) reinforcement details on the drawings (bar by bar),
+# 3) thumb-rule kg per cft of concrete. Each line says which was used.
+_BBS_KINDS = {"WI-RF-01": ("footing",), "WI-RF-02": ("column",), "WI-RF-03": ("plinth", "fdn_tie", "beam"),
+              "WI-RF-04": ("slab",), "WI-RF-05": ("stair",), "WI-RF-06": ("lintel", "roof_band"), "WI-RF-07": ("tank",)}
+
+
+def _bbs(p, wi_id):
+    rb = getattr(p, "rebar", None)
+    if not rb or not rb.bbs:
+        return None
+    from detailed_mto.rebar import bbs_by_kind
+    kinds = _BBS_KINDS[wi_id]
+    by = bbs_by_kind(rb)
+    kg = sum(by.get(k, 0.0) for k in kinds)
+    if kg <= 0:
+        return None
+    return WIQty(kg, HIGH, f"bar bending schedule on the drawings: {', '.join(k for k in kinds if by.get(k))} = {_f(kg)} kg")
+
+
+def _spec(p, kind):
+    rb = getattr(p, "rebar", None)
+    if not rb:
+        return None
+    m = rb.members.get(kind)
+    return m if (m is not None and m.has_detail()) else None
+
+
+def _geo_conf(p, *keys):
+    return HIGH if all(p.conf(k) in (HIGH, USER) for k in keys) else MEDIUM
+
+
+@wi("WI-RF-01")
+def _rf01(p, kb, q):
+    hit = _bbs(p, "WI-RF-01")
+    if hit:
+        return hit
+    spec = _spec(p, "footing")
+    if spec and spec.mesh and p.v("FTG_N") > 0:
+        from detailed_mto.rebar import footing_steel
+        r = footing_steel(spec, p.v("FTG_N"), p.v("FTG_L"), p.v("FTG_B"), p.v("FTG_D"))
+        return WIQty(r.kg, _geo_conf(p, "FTG_N", "FTG_L"), "from the drawing's footing reinforcement: " + r.calc)
+    kg, calc = _ratio_qty(q, kb, ["WI-CN-03"], "K_ST_FTG", "footing RCC")
+    return WIQty(kg, worst(q["WI-CN-03"].confidence, MEDIUM), calc)
+
+
+@wi("WI-RF-02")
+def _rf02(p, kb, q):
+    hit = _bbs(p, "WI-RF-02")
+    if hit:
+        return hit
+    spec = _spec(p, "column")
+    if spec and p.v("COL_N") > 0:
+        from detailed_mto.rebar import column_steel
+        h = sum(f.storey_height_ft for f in p.storeys) + p.v("FDN_DEPTH")
+        r = column_steel(spec, p.v("COL_N"), p.v("COL_B_IN"), p.v("COL_D_IN"), h, len(p.storeys))
+        return WIQty(r.kg, _geo_conf(p, "COL_N", "COL_B_IN"), "from the drawing's column reinforcement: " + r.calc)
+    kg, calc = _ratio_qty(q, kb, ["WI-CN-05"], "K_ST_COL", "column RCC")
+    return WIQty(kg, worst(q["WI-CN-05"].confidence, MEDIUM), calc)
 
 
 @wi("WI-RF-03")
 def _rf03(p, kb, q):
-    b = q["WI-CN-06"].qty * kb.k("K_ST_BEAM")
-    pb = q["WI-CN-04"].qty * kb.k("K_ST_PB")
-    return WIQty(b + pb, worst(q["WI-CN-06"].confidence, MEDIUM), f"beams {_f(b)} kg + plinth beams {_f(pb)} kg (ratio method)")
+    hit = _bbs(p, "WI-RF-03")
+    if hit:
+        return hit
+    from detailed_mto.rebar import linear_steel
+    parts, kg, drawn = [], 0.0, False
+    gf = p.storeys[0] if p.storeys else None
+    wall_in = 9.0
+    # plinth beams / bands
+    spec = _spec(p, "plinth")
+    pb_run = p.v("PB_LEN") or (gf.wall9_len_ft if (spec and gf) else 0.0)
+    if spec and pb_run > 0:
+        r = linear_steel("plinth", spec, pb_run, spec.width_in or wall_in, 12.0)
+        kg += r.kg
+        parts.append("plinth (drawing): " + r.calc)
+        drawn = True
+    else:
+        v = q["WI-CN-04"].qty * kb.k("K_ST_PB")
+        kg += v
+        parts.append(f"plinth beams {_f(v)} kg (thumb rule)")
+    # foundation tie beams (drawn only)
+    spec = _spec(p, "fdn_tie")
+    if spec and gf:
+        r = linear_steel("fdn_tie", spec, gf.wall9_len_ft, spec.width_in or wall_in, 12.0)
+        kg += r.kg
+        parts.append("foundation tie (drawing): " + r.calc)
+        drawn = True
+    # beams
+    spec = _spec(p, "beam")
+    run = p.v("BEAM_N") * p.v("BEAM_LEN") * len(p.storeys)
+    if spec and run > 0:
+        r = linear_steel("beam", spec, run, p.v("BEAM_B_IN"), p.v("BEAM_D_IN"))
+        kg += r.kg
+        parts.append("beams (drawing): " + r.calc)
+        drawn = True
+    else:
+        v = q["WI-CN-06"].qty * kb.k("K_ST_BEAM")
+        kg += v
+        parts.append(f"beams {_f(v)} kg (thumb rule)")
+    conf = _geo_conf(p, "PB_LEN") if drawn else worst(q["WI-CN-06"].confidence, MEDIUM)
+    return WIQty(kg, conf, " + ".join(parts))
+
+
+@wi("WI-RF-04")
+def _rf04(p, kb, q):
+    hit = _bbs(p, "WI-RF-04")
+    if hit:
+        return hit
+    spec = _spec(p, "slab")
+    if spec and spec.mesh:
+        from detailed_mto.rebar import slab_steel
+        area = sum(a for _, a in slab_areas(p))
+        r = slab_steel(spec, area)
+        return WIQty(r.kg, worst(*(f.confidence for f in p.floors), MEDIUM), "from the drawing's slab reinforcement: " + r.calc)
+    kg, calc = _ratio_qty(q, kb, ["WI-CN-07"], "K_ST_SLAB", "slab RCC")
+    return WIQty(kg, worst(q["WI-CN-07"].confidence, MEDIUM), calc)
+
+
+@wi("WI-RF-05")
+def _rf05(p, kb, q):
+    hit = _bbs(p, "WI-RF-05")
+    if hit:
+        return hit
+    kg, calc = _ratio_qty(q, kb, ["WI-CN-08"], "K_ST_STAIR", "stair RCC")
+    return WIQty(kg, worst(q["WI-CN-08"].confidence, MEDIUM), calc)
+
+
+@wi("WI-RF-06")
+def _rf06(p, kb, q):
+    hit = _bbs(p, "WI-RF-06")
+    if hit:
+        return hit
+    from detailed_mto.rebar import linear_steel
+    parts, kg, band_vol, drawn = [], 0.0, 0.0, False
+    run = p.v("BAND_LEN")
+    for kind, label in (("lintel", "lintel / door band"), ("roof_band", "roof band")):
+        spec = _spec(p, kind)
+        if spec and run > 0:
+            run_k = run if kind == "lintel" else (p.storeys[-1].wall9_len_ft if p.storeys else run)
+            r = linear_steel(kind, spec, run_k, spec.width_in or 9.0, p.v("BAND_D_IN") or 6.0)
+            kg += r.kg
+            parts.append(f"{label} (drawing): " + r.calc)
+            drawn = True
+            if kind == "lintel":
+                band_vol = run * 0.75 * p.v("BAND_D_IN") / 12
+    rest = max(q["WI-CN-09"].qty - band_vol, 0.0) + q["WI-CN-10"].qty
+    if rest > 0:
+        v = rest * kb.k("K_ST_LINTEL")
+        kg += v
+        parts.append(f"{'other lintels & chajjas' if drawn else 'lintels, bands & chajjas'} {_f(rest)} cft x "
+                     f"{_f(kb.k('K_ST_LINTEL'))} kg/cft (thumb rule)")
+    return WIQty(kg, MEDIUM if drawn else worst(q["WI-CN-09"].confidence, MEDIUM), " + ".join(parts) or "none")
+
+
+@wi("WI-RF-07")
+def _rf07(p, kb, q):
+    hit = _bbs(p, "WI-RF-07")
+    if hit:
+        return hit
+    kg, calc = _ratio_qty(q, kb, ["WI-CN-11"], "K_ST_TANK", "tank RCC")
+    return WIQty(kg, worst(q["WI-CN-11"].confidence, MEDIUM), calc)
 
 
 # ================================= FORMWORK =================================

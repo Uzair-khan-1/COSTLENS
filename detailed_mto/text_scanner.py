@@ -69,6 +69,7 @@ class ScanResult:
     ug_tank_detail: Optional[Tuple[float, float]] = None
     oh_tank_detail: Optional[Tuple[float, float]] = None
     windows: List[WindowRow] = field(default_factory=list)  # from a window schedule table
+    rebar: object = None  # detailed_mto.rebar.RebarFacts - reinforcement details / BBS read from the drawings
     gate: Optional[Tuple[float, float]] = None  # main gate (width, height) from a schedule
     detail_only: set = field(default_factory=set)
     sources: Dict[str, str] = field(default_factory=dict)
@@ -151,6 +152,35 @@ def _parse_door_schedule(lines, src: str) -> List[DoorRow]:
     return rows
 
 
+_REBAR_HINT = re.compile(r"#\s*\d\s*@|\d\s*-\s*#\s*\d|\b\d{1,2}\s*mm\s*@|[TY]\d{1,2}\s*@|c/c|bar\s*mark|bar\s*bending|"
+                         r"reinforcement|stirrup|\brings?\b", re.I)
+
+
+def _merge_rebar(res: "ScanResult", rb) -> None:
+    if rb is None or not (rb.any() or rb.stated_total_kg):
+        return
+    if res.rebar is None:
+        res.rebar = rb
+        return
+    cur = res.rebar
+    for k, m in rb.members.items():
+        if k not in cur.members:
+            cur.members[k] = m
+        else:
+            c = cur.members[k]
+            c.long_bars = c.long_bars or m.long_bars
+            c.ties = c.ties or m.ties
+            c.mesh = c.mesh or m.mesh
+            c.both_ways = c.both_ways or m.both_ways
+            c.count = c.count or m.count
+            c.size_in = c.size_in or m.size_in
+            c.width_in = c.width_in or m.width_in
+    cur.bbs += rb.bbs
+    if cur.stated_total_kg is None and rb.stated_total_kg:
+        cur.stated_total_kg, cur.stated_total_text = rb.stated_total_kg, rb.stated_total_text
+    cur.notes += rb.notes
+
+
 def scan_pdf_bytes(files: List[dict]) -> ScanResult:
     """files: [{"name": str, "bytes": bytes, ...}] as stored in session state."""
     res = ScanResult()
@@ -167,9 +197,15 @@ def scan_pdf_bytes(files: List[dict]) -> ScanResult:
         except Exception:
             res.notes.append(f"Could not open {name} for label scan.")
             continue
+        rebar_pages = []
         for pi, page in enumerate(doc):
             if pi >= 80:
                 break
+            try:
+                if _REBAR_HINT.search(page.get_text()):
+                    rebar_pages.append(page)
+            except Exception:  # noqa: BLE001
+                pass
             try:
                 lines = _page_lines(page)
             except Exception:
@@ -231,6 +267,12 @@ def scan_pdf_bytes(files: List[dict]) -> ScanResult:
                     if near:
                         res.septic_plan = near
                         res.sources["septic_plan"] = src
+        if rebar_pages:
+            try:
+                from detailed_mto.rebar import read_rebar
+                _merge_rebar(res, read_rebar(rebar_pages, name))
+            except Exception as exc:  # noqa: BLE001 - never block the drawing scan
+                res.notes.append(f"Reinforcement details in {name} could not be read: {exc}")
         doc.close()
     # sum per-floor maxima; detail/legend sheets ("other") only count when no plan sheet has the label
     keys_on_plans = {k for (k, fl) in floor_counts if fl != "other"}
