@@ -33,7 +33,11 @@ AUTO_APPROVE_PCT = 5.0
 REJECT_PCT = 40.0
 MAX_RESULTS = 5
 MAX_PAGE_CHARS = 400_000
-UA = "Mozilla/5.0 (compatible; CostLensPriceBot/1.0; +https://github.com/) construction rate research"
+UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36 "
+      "CostLensPriceCheck/1.1")
+HEADERS = {"User-Agent": UA, "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+           "Accept-Language": "en-PK,en;q=0.9"}
+MAX_AGE_DAYS = 120  # pages whose newest date is older than this are not used
 
 TRUSTED_DOMAINS = {
     "pbs.gov.pk", "dawn.com", "tribune.com.pk", "brecorder.com", "arynews.tv", "geo.tv", "thenews.com.pk", "dailyausaf.com",
@@ -88,7 +92,7 @@ class RunReport:
         return out
 
     def markdown(self) -> str:
-        lines = [f"# Price update {self.started}", "", f"Searches: {self.searches} - pages read: {self.pages}",
+        lines = [f"#### Price update {self.started}", "", f"Searches: {self.searches} - pages read: {self.pages}",
                  "", "Summary: " + ", ".join(f"{k}: {v}" for k, v in sorted(self.summary().items())), "",
                  "| City | Item | Status | Old | New | Change | Sources |", "|---|---|---|---|---|---|---|"]
         for r in self.results:
@@ -96,7 +100,7 @@ class RunReport:
             lines.append(f"| {r.city} | {r.name} | {r.status} | {r.old_rate:,.2f} | "
                          f"{'' if r.new_rate is None else f'{r.new_rate:,.2f}'} | "
                          f"{'' if r.change_pct is None else f'{r.change_pct:+.1f}%'} | {src} |")
-            for n in r.notes[:3]:
+            for n in r.notes[:6]:
                 lines.append(f"|  | | note: {n} | | | | |")
         return "\n".join(lines)
 
@@ -113,8 +117,8 @@ class _TextExtractor(HTMLParser):
     def handle_starttag(self, tag, attrs):
         if tag in ("script", "style", "noscript", "svg", "head"):
             self._skip += 1
-        elif tag in ("p", "div", "br", "tr", "li", "h1", "h2", "h3", "h4", "td", "th"):
-            self.parts.append("\n")
+        elif tag in ("p", "div", "br", "tr", "li", "h1", "h2", "h3", "h4", "table"):
+            self.parts.append("\n")  # table cells stay on their row's line ("Lucky Cement | 1,560 |")
 
     def handle_endtag(self, tag):
         if tag in ("script", "style", "noscript", "svg", "head") and self._skip:
@@ -140,7 +144,7 @@ def html_to_text(html: str) -> str:
 
 def http_get(url: str, timeout: float = 15.0) -> str:
     import requests
-    r = requests.get(url, headers={"User-Agent": UA, "Accept-Language": "en"}, timeout=timeout, stream=True)
+    r = requests.get(url, headers=HEADERS, timeout=timeout, stream=True)
     r.raise_for_status()
     raw = r.raw.read(MAX_PAGE_CHARS, decode_content=True)
     return raw.decode(r.encoding or "utf-8", errors="replace")
@@ -182,18 +186,85 @@ def search_brave(query: str, key: str) -> List[dict]:
     return [{"url": x.get("url", ""), "title": x.get("title", "")} for x in (r.json().get("web", {}).get("results") or [])]
 
 
+def search_ddgs(query: str) -> List[dict]:
+    """The maintained DuckDuckGo client library (pip install ddgs) - much more reliable than scraping."""
+    try:
+        from ddgs import DDGS
+    except ImportError:
+        from duckduckgo_search import DDGS  # older package name
+    with DDGS() as d:
+        return [{"url": r.get("href") or r.get("url", ""), "title": r.get("title", ""), "content": r.get("body", "")}
+                for r in d.text(query, region="pk-en", max_results=MAX_RESULTS)]
+
+
+def search_ddg_lite(query: str) -> List[dict]:
+    import requests
+    r = requests.post("https://lite.duckduckgo.com/lite/", data={"q": query, "kl": "pk-en"}, headers=HEADERS, timeout=15)
+    r.raise_for_status()
+    out = []
+    for m in re.finditer(r'<a[^>]+href="([^"]+)"[^>]*class=[\'"]result-link[\'"][^>]*>(.*?)</a>', r.text, flags=re.S):
+        href = m.group(1)
+        if "uddg=" in href:
+            href = unquote(parse_qs(urlparse(href).query).get("uddg", [href])[0])
+        if href.startswith("//"):
+            href = "https:" + href
+        if href.startswith("http"):
+            out.append({"url": href, "title": re.sub(r"<[^>]+>", "", m.group(2))})
+        if len(out) >= MAX_RESULTS:
+            break
+    return out
+
+
+def search_bing(query: str) -> List[dict]:
+    import requests
+    r = requests.get("https://www.bing.com/search?q=" + quote_plus(query) + "&setlang=en&cc=PK", headers=HEADERS, timeout=15)
+    r.raise_for_status()
+    out = []
+    for m in re.finditer(r'<li class="b_algo".*?<h2[^>]*><a[^>]+href="(https?://[^"]+)"[^>]*>(.*?)</a>', r.text, flags=re.S):
+        out.append({"url": m.group(1), "title": re.sub(r"<[^>]+>", "", m.group(2))})
+        if len(out) >= MAX_RESULTS:
+            break
+    return out
+
+
+SEARCH_LOG: List[str] = []  # which engine answered / failed (shown in the run report)
+
+
 def default_search(tavily_key: str = "", brave_key: str = "") -> Callable[[str], List[dict]]:
+    engines = ([("Tavily", lambda x: search_tavily(x, tavily_key))] if tavily_key else []) + \
+              ([("Brave", lambda x: search_brave(x, brave_key))] if brave_key else []) + \
+              [("DuckDuckGo (ddgs)", search_ddgs), ("DuckDuckGo lite", search_ddg_lite), ("Bing", search_bing),
+               ("DuckDuckGo html", search_duckduckgo)]
+
     def run(q: str) -> List[dict]:
-        for fn in ([lambda x: search_tavily(x, tavily_key)] if tavily_key else []) + \
-                  ([lambda x: search_brave(x, brave_key)] if brave_key else []) + [search_duckduckgo]:
+        for name, fn in engines:
             try:
                 res = fn(q)
                 if res:
+                    SEARCH_LOG.append(f"{name}: {len(res)} results")
                     return res
-            except Exception:  # noqa: BLE001 - try the next search engine
-                continue
+                SEARCH_LOG.append(f"{name}: no results")
+            except Exception as exc:  # noqa: BLE001 - try the next search engine
+                SEARCH_LOG.append(f"{name}: {type(exc).__name__} {str(exc)[:60]}")
         return []
     return run
+
+
+# Pages that publish current rates, read directly every run (no search engine needed). Old pages are skipped by date.
+DIRECT_SOURCES = {
+    "CON-001": ["https://icons.com.pk/cement-rate-today", "https://priceguide.pk/cement-price-in-pakistan/",
+                "https://propertydealer.pk/today-cement-rate-in-pakistan",
+                "https://hamariweb.com/finance/info/cement-rate-today-in-pakistan/"],
+    "RBR-002": ["https://icons.com.pk/steel-rate-today", "https://pricesin.pk/saria-rate-today-in-pakistan/"],
+}
+# brand / row names that mark a table row as being about the item (for tables without "Rs ... per bag")
+ROW_WORDS = {
+    "CON-001": ["cement", "lucky", "bestway", "maple", "dg khan", "fauji", "cherat", "kohat", "pioneer", "power", "askari",
+                "flying", "pakcem", "falcon", "paidar", "islamabad", "lahore", "karachi", "rawalpindi", "peshawar", "quetta"],
+    "RBR-002": ["steel", "saria", "sarya", "amreli", "mughal", "agha", "af steel", "moiz", "union", "naveena", "five star",
+                "ittefaq", "kamran", "grade 60", "60 grade", "sutar", "islamabad", "lahore", "karachi", "rawalpindi", "peshawar",
+                "quetta"],
+}
 
 
 def domain_of(url: str) -> str:
@@ -258,6 +329,75 @@ def rule_extract(snippet: str, spec: dict) -> List[dict]:
         a, b = max(0, m.start() - 120), min(len(snippet), m.end() + 40)
         out.append({"price": price, "unit": m.group(3), "city": "", "quote": snippet[m.start():m.end()], "context": snippet[a:b]})
     return out
+
+
+def table_extract(snippet: str, spec: dict) -> List[dict]:
+    """Rate tables without 'Rs ... per bag' on each row, e.g. 'Lucky Cement | 1,560' under a 'Price/50 kg bag (PKR)'
+    header, or 'Mughal Steel | 255 | 255,000 | 261 | 261,000'. A row counts when it names the item (brand / city / item
+    word) and holds a number that is a plausible price in the item's unit (or per ton for steel)."""
+    lo, hi = spec["sane"]
+    words = [w.lower() for w in spec.get("row_words", spec["keywords"])]
+    unit_words = {"bag": r"bag|bori", "kg": r"\bkg\b|kilo", "Nos": r"brick|1000|thousand", "cft": r"cft|cubic"}.get(spec["unit"], "")
+    if unit_words and not re.search(unit_words, snippet, re.I):
+        return []
+    out = []
+    for raw in re.split(r"\n", snippet):
+        line = raw.strip()
+        if len(line) < 5 or len(line) > 220 or not any(w in line.lower() for w in words):
+            continue
+        nums = []
+        for mm in re.finditer(_NUM, line):
+            v = _num(mm.group(0))
+            before = line[max(0, mm.start() - 4):mm.start()].lower()
+            if 1990 <= v <= 2100 and float(v).is_integer() and "," not in mm.group(0) and not re.search(r"rs\.?\s*$|pkr\s*$|\u20a8\s*$", before):
+                continue  # a year (e.g. "Cement Rate Today 2026"), not a price
+            if re.search(r"[-/.]\s*$", before) or re.match(r"\s*[-/.]\d", line[mm.end():mm.end() + 3]):
+                continue  # part of a date like 27-09-2026
+            nums.append(v)
+        vals = []
+        for v in nums:
+            if lo <= v <= hi:
+                vals.append(v)
+            elif spec["unit"] == "kg" and lo <= v / 1000 <= hi:  # per-ton column
+                vals.append(v / 1000)
+        if not vals:
+            continue
+        price = max(vals) if spec["unit"] == "kg" else vals[0]  # steel rows: grade 60 is the higher column
+        out.append({"price": price, "unit": spec["unit"], "city": "", "quote": line[:200], "context": line})
+    return out[:40]
+
+
+_MONTHS = {m: i for i, m in enumerate(["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], 1)}
+
+
+def page_date(text: str):
+    """Newest date written on the page (not in the future) - used to skip old rate pages."""
+    from datetime import date as _date
+    today = _date.today()
+    found = []
+    for m in re.finditer(r"\b(\d{1,2})[-/.](\d{1,2})[-/.](20\d\d)\b", text):
+        try:
+            found.append(_date(int(m.group(3)), int(m.group(2)), int(m.group(1))))
+        except ValueError:
+            pass
+    mon = r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*"
+    for m in re.finditer(rf"\b(\d{{1,2}})\s+{mon},?\s+(20\d\d)", text, re.I):
+        try:
+            found.append(_date(int(m.group(3)), _MONTHS[m.group(2).lower()[:3]], int(m.group(1))))
+        except ValueError:
+            pass
+    for m in re.finditer(rf"\b{mon}\s+(\d{{1,2}}),?\s+(20\d\d)", text, re.I):
+        try:
+            found.append(_date(int(m.group(3)), _MONTHS[m.group(1).lower()[:3]], int(m.group(2))))
+        except ValueError:
+            pass
+    for m in re.finditer(rf"\b{mon},?\s+(20\d\d)\b", text, re.I):
+        try:
+            found.append(_date(int(m.group(2)), _MONTHS[m.group(1).lower()[:3]], 15))
+        except ValueError:
+            pass
+    found = [d for d in found if d <= today and d.year >= today.year - 3]
+    return max(found) if found else None
 
 
 LLM_SYSTEM = ("You extract construction material prices from web page text for Pakistan. Answer only with JSON. "
@@ -355,7 +495,7 @@ class PriceAgent:
     def __init__(self, book: RateBook, keys=None, search: Optional[Callable[[str], List[dict]]] = None,
                  fetch: Optional[Callable[[str], str]] = None, extractor: Optional[Callable] = None,
                  auto_pct: float = AUTO_APPROVE_PCT, reject_pct: float = REJECT_PCT, pause_s: float = 1.0,
-                 log: Optional[Callable[[str], None]] = None):
+                 log: Optional[Callable[[str], None]] = None, direct: Optional[Dict[str, List[str]]] = None):
         self.book = book
         self.keys = keys
         self.search = search or default_search()
@@ -366,6 +506,7 @@ class PriceAgent:
         self.pause_s = pause_s
         self.log = log or (lambda m: None)
         self._page_cache: Dict[str, str] = {}
+        self.direct = DIRECT_SOURCES if direct is None else direct
 
     def _extract(self, snippet: str, spec: dict, city: str) -> List[dict]:
         if self.extractor is not None:
@@ -377,7 +518,7 @@ class PriceAgent:
                     return found
             except Exception as exc:  # noqa: BLE001 - fall back to the rules
                 self.log(f"AI extraction failed ({exc}); using rules")
-        return rule_extract(snippet, spec)
+        return rule_extract(snippet, spec) + table_extract(snippet, spec)
 
     def _page(self, url: str) -> str:
         if url not in self._page_cache:
@@ -390,19 +531,29 @@ class PriceAgent:
         city = city_key(city)
         current = self.book.rate(mat_id, city).rate
         res = ItemResult(city, mat_id, spec["name"], "no-data", current)
+        spec = dict(spec, row_words=ROW_WORDS.get(mat_id, spec["keywords"]))
         q = spec["query"].format(city=city)
+        n_log = len(SEARCH_LOG)
         try:
             hits = self.search(q)
         except Exception as exc:  # noqa: BLE001
-            res.status, res.notes = "error", [f"search failed: {exc}"]
-            return res
+            hits = []
+            res.notes.append(f"search failed: {exc}")
         if report is not None:
             report.searches += 1
+        res.notes += [f"search - {m}" for m in SEARCH_LOG[n_log:]]
+        if not hits:
+            res.notes.append("the search engines returned nothing - only the known rate pages were read")
+        urls, seen = [], set()
+        for h in [{"url": u} for u in self.direct.get(mat_id, [])] + list(hits[:MAX_RESULTS]):
+            u = h.get("url", "")
+            if u and domain_of(u) not in seen:
+                seen.add(domain_of(u))
+                urls.append(h)
         cands: List[Candidate] = []
-        for h in hits[:MAX_RESULTS]:
-            url = h.get("url", "")
-            if not url:
-                continue
+        from datetime import date as _date
+        for h in urls:
+            url = h["url"]
             try:
                 text = h.get("content") if h.get("content") and len(h.get("content", "")) > 400 else self._page(url)
                 if report is not None:
@@ -410,10 +561,20 @@ class PriceAgent:
             except Exception as exc:  # noqa: BLE001 - blocked / timeout / 404
                 res.notes.append(f"could not read {domain_of(url)}: {str(exc)[:60]}")
                 continue
-            snippet = relevant_snippets(text, spec["keywords"])
+            d = page_date(text)
+            if d is not None and (_date.today() - d).days > MAX_AGE_DAYS:
+                res.notes.append(f"skipped {domain_of(url)}: newest date on the page is {d:%d %b %Y} (too old)")
+                continue
+            snippet = relevant_snippets(text, spec["keywords"] + spec["row_words"][:6], limit=9000)
             if not snippet:
                 continue
-            cands += verify(self._extract(snippet, spec, city), text, spec, city, url)
+            found = verify(self._extract(snippet, spec, city), text, spec, city, url)
+            if found:  # one vote per website: its median price (a table with 15 brands must not outvote others)
+                found.sort(key=lambda c: c.price)
+                local = [c for c in found if c.city != "Pakistan"] or found
+                cands.append(local[len(local) // 2])
+                if d is not None:
+                    cands[-1].date = d.isoformat()
         res.candidates = cands
         comb = combine(cands)
         if comb is None:

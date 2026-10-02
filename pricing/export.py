@@ -264,7 +264,7 @@ def pdf_logo(width_mm: float = 52.0):
         from reportlab.lib.units import mm
         from reportlab.platypus import Image
         if config.LOGO_HORIZONTAL_PATH.exists():
-            img = Image(str(config.LOGO_HORIZONTAL_PATH), width=width_mm * mm, height=width_mm * mm * 512 / 1500)
+            img = Image(str(config.LOGO_HORIZONTAL_PATH), width=width_mm * mm, height=width_mm * mm * 512 / 1700)
             img.hAlign = "LEFT"
             return img
     except Exception:  # noqa: BLE001

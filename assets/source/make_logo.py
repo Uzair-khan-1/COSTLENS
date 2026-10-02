@@ -52,19 +52,19 @@ def icon_svg():
 
 def full_svg(dark=False):
     cost = "#FFFFFF" if dark else "#1B2F5B"
-    tag = "#C7D7EE" if dark else "#5B6B85"
-    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 512" width="1500" height="512">{DEFS}'
+    tag = "#DCE7F7" if dark else "#3E4E68"
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1700 512" width="1700" height="512">{DEFS}'
             f'<g transform="translate(10,6) scale(.97)">{mark()}</g>'
-            f'<text x="545" y="298" font-family="Poppins" font-weight="700" font-size="190" letter-spacing="-4">'
+            f'<text x="540" y="282" font-family="Poppins" font-weight="700" font-size="196" letter-spacing="-4">'
             f'<tspan fill="{cost}">Cost</tspan><tspan fill="url(#word)">Lens</tspan></text>'
-            f'<text x="553" y="380" font-family="Poppins" font-weight="600" font-size="44" letter-spacing="9" fill="{tag}">'
+            f'<text x="548" y="392" font-family="Poppins" font-weight="700" font-size="62" letter-spacing="5" fill="{tag}">'
             f'MATERIALS <tspan fill="#F4B023">\u2022</tspan> COST <tspan fill="#F4B023">\u2022</tspan> SCHEDULE</text></svg>')
 
-for name, svg, w, h in (("costlens_icon", icon_svg(), 512, 512), ("costlens_logo", full_svg(), 1500, 512),
-                        ("costlens_logo_on_dark", full_svg(True), 1500, 512)):
+for name, svg, w, h in (("costlens_icon", icon_svg(), 512, 512), ("costlens_logo", full_svg(), 1700, 512),
+                        ("costlens_logo_on_dark", full_svg(True), 1700, 512)):
     open(name + ".svg", "w").write(svg)
     cairosvg.svg2png(bytestring=svg.encode(), write_to=name + ".png", output_width=w, output_height=h)
 for name, bg in (("costlens_logo", "#FFFFFF"), ("costlens_logo_on_dark", "#0E1A2F")):
-    base = Image.new("RGBA", (1500, 512), bg); base.alpha_composite(Image.open(name + ".png")); base.convert("RGB").save(f"prev2_{name}.png")
+    base = Image.new("RGBA", (1700, 512), bg); base.alpha_composite(Image.open(name + ".png")); base.convert("RGB").save(f"prev2_{name}.png")
 base = Image.new("RGBA", (512, 512), "#FFFFFF"); base.alpha_composite(Image.open("costlens_icon.png"))
 small = base.resize((64, 64), Image.LANCZOS); small.save("prev2_icon64.png")

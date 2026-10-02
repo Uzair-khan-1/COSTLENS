@@ -137,9 +137,10 @@ R = {
 # ---------------------------------------------------------------------------
 LIVE_ITEMS = {
     "CON-001": {"name": "Cement (OPC, 50 kg bag)", "query": "cement price today {city} per bag", "unit": "bag",
-                "units": {"bag": 1.0, "50 kg bag": 1.0, "50kg bag": 1.0}, "sane": (1100, 2200), "keywords": ["cement"]},
+                "units": {"bag": 1.0, "50 kg bag": 1.0, "50kg bag": 1.0, "bori": 1.0}, "sane": (1100, 2200), "keywords": ["cement"]},
     "RBR-002": {"name": "Steel bars Grade 60 (#4, 12 mm)", "query": "steel sarya rate today {city} grade 60 per kg", "unit": "kg",
-                "units": {"kg": 1.0, "ton": 0.001, "tonne": 0.001, "metric ton": 0.001, "maund": 1 / 40.0}, "sane": (190, 360),
+                "units": {"kg": 1.0, "kilogram": 1.0, "kilo": 1.0, "ton": 0.001, "tonne": 0.001, "metric ton": 0.001,
+                          "maund": 1 / 40.0}, "sane": (190, 360),
                 "keywords": ["steel", "sarya", "saria", "rebar"], "also": ["RBR-001", "RBR-003", "RBR-004", "RBR-007", "RBR-010"]},
     "MAS-001": {"name": "Bricks, A class (awwal)", "query": "bricks rate today {city} per 1000", "unit": "Nos",
                 "units": {"brick": 1.0, "piece": 1.0, "1000 bricks": 0.001, "thousand": 0.001, "1000": 0.001}, "sane": (9, 32),
