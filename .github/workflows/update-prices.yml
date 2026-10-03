@@ -9,12 +9,17 @@ on:
   workflow_dispatch: {}      # "Run workflow" button for a manual refresh
 permissions:
   contents: write
+concurrency:               # never two price updates at the same time
+  group: update-prices
+  cancel-in-progress: false
 jobs:
   prices:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -29,10 +34,36 @@ jobs:
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
           BRAVE_API_KEY: ${{ secrets.BRAVE_API_KEY }}
         run: python scripts/update_prices.py
+      # the report and rate files are always attached to the run (Actions -> this run -> Artifacts),
+      # even if saving them to the repository fails
+      - name: Keep the results with this run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: price-update-${{ github.run_number }}
+          path: data/rates/*.json
+          if-no-files-found: ignore
+      - name: Keep the report with this run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: price-report-${{ github.run_number }}
+          path: data/rates/last_update.md
+          if-no-files-found: ignore
       - name: Commit the new rates
         run: |
           git config user.name "costlens-price-bot"
           git config user.email "price-bot@users.noreply.github.com"
           git add data/rates/*.json data/rates/last_update.md || true
-          git diff --cached --quiet || git commit -m "Weekly price update $(date +%F)"
-          git push
+          git diff --cached --quiet && { echo "No price changes to save."; exit 0; }
+          git commit -m "Weekly price update $(date +%F)"
+          # someone may have uploaded files while the update was running: bring those in first, then save
+          for attempt in 1 2 3; do
+            if git pull --rebase --autostash origin main && git push origin HEAD:main; then
+              echo "Saved."; exit 0
+            fi
+            git rebase --abort 2>/dev/null || true
+            echo "Push attempt $attempt failed - retrying in 10 s"; sleep 10
+          done
+          # last resort: keep our rate files on top of the newest repository state
+          git pull --no-rebase -X ours origin main && git push origin HEAD:main
