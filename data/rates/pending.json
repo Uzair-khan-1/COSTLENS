@@ -1,0 +1,584 @@
+[
+ {
+  "city": "Islamabad",
+  "mat_id": "MAS-001",
+  "name": "Bricks, A class (awwal)",
+  "old_rate": 17.5,
+  "new_rate": 23.75,
+  "low": 19.5,
+  "high": 28.0,
+  "unit": "Nos",
+  "change_pct": 35.71,
+  "sources": [
+   {
+    "url": "https://www.brickpakistan.com/materials/islamabad",
+    "domain": "brickpakistan.com",
+    "quote": "StandardAwal (A-class)estimate | 17,000–22,000 | 2026-07-02 |",
+    "price": 19.5,
+    "raw": "19500 1000 bricks",
+    "trusted": false,
+    "city": "Islamabad"
+   },
+   {
+    "url": "https://www.margallacrush.com/2025/09/construction-material-rates-rawalpindi-islamabad-daily-update.html",
+    "domain": "margallacrush.com",
+    "quote": "Peshawari Bricks (A Grade) | 28",
+    "price": 28.0,
+    "raw": "28 brick",
+    "trusted": false,
+    "city": "Islamabad"
+   }
+  ],
+  "reason": "+35.7% vs current - single untrusted source",
+  "created": "2026-10-03"
+ },
+ {
+  "city": "Islamabad",
+  "mat_id": "CON-004",
+  "name": "Sand for concrete (Lawrencepur / Chenab)",
+  "old_rate": 135.0,
+  "new_rate": 120.0,
+  "low": 120.0,
+  "high": 120.0,
+  "unit": "cft",
+  "change_pct": -11.11,
+  "sources": [
+   {
+    "url": "https://www.margallacrush.com/2025/09/construction-material-rates-rawalpindi-islamabad-daily-update.html",
+    "domain": "margallacrush.com",
+    "quote": "Sand Lawrencepur (Harrow) | 120 |",
+    "price": 120.0,
+    "raw": "120 cft",
+    "trusted": false,
+    "city": "Pakistan"
+   }
+  ],
+  "reason": "-11.1% vs current - single untrusted source",
+  "created": "2026-10-03"
+ },
+ {
+  "city": "Islamabad",
+  "mat_id": "CON-006",
+  "name": "Crush / bajri 3/4 inch",
+  "old_rate": 190.0,
+  "new_rate": 137.5,
+  "low": 130.0,
+  "high": 141.5,
+  "unit": "cft",
+  "change_pct": -27.63,
+  "sources": [
+   {
+    "url": "https://checkprice.pk/crush-price-in-pakistan-bajri-rate-today/",
+    "domain": "checkprice.pk",
+    "quote": "Margalla: Rs. 135 – 148",
+    "price": 141.5,
+    "raw": "141.5 cft",
+    "trusted": false,
+    "city": "Islamabad"
+   },
+   {
+    "url": "https://propertydealer.pk/today-bajri-rate-in-pakistan",
+    "domain": "propertydealer.pk",
+    "quote": "Islamabad / Rawalpindi | Rs. 130 – 145",
+    "price": 137.5,
+    "raw": "137.5 cft",
+    "trusted": false,
+    "city": "Islamabad"
+   },
+   {
+    "url": "https://www.margallacrush.com/2025/09/construction-material-rates-rawalpindi-islamabad-daily-update.html",
+    "domain": "margallacrush.com",
+    "quote": "Margalla Crush (12–20 mm) | 130",
+    "price": 130.0,
+    "raw": "130 cft",
+    "trusted": false,
+    "city": "Islamabad"
+   }
+  ],
+  "reason": "-27.6% vs current",
+  "created": "2026-10-03"
+ },
+ {
+  "city": "Islamabad",
+  "mat_id": "ELE-006",
+  "name": "Copper house wire 3/29 (90 m coil)",
+  "old_rate": 110.0,
+  "new_rate": 90.0,
+  "low": 90.0,
+  "high": 90.0,
+  "unit": "m",
+  "change_pct": -18.18,
+  "sources": [
+   {
+    "url": "https://www.anwarcables.pk/product/3-29-cable-wire/",
+    "domain": "anwarcables.pk",
+    "quote": "What is the price per meter and per foot for 3/29 Single Core House Wiring Copper Cable (90m Coil) in Pakistan?",
+    "price": 90.0,
+    "raw": "90 m",
+    "trusted": false,
+    "city": "Pakistan"
+   },
+   {
+    "url": "https://chachatrader.com/products/pakistan-cables-3-29-pure-copper-wire-90m",
+    "domain": "chachatrader.com",
+    "quote": "Pakistan Cables 3/.029 Pure Copper Wire – 90m Coil (Best Price Karachi Lahore)",
+    "price": 90.0,
+    "raw": "90 m",
+    "trusted": false,
+    "city": "Pakistan"
+   },
+   {
+    "url": "https://libra-cables.com/pakistan-cables-3-29-price-in-pakistan-90m-coil-guide/",
+    "domain": "libra-cables.com",
+    "quote": "Pakistan Cables 3/29 Price in Pakistan | 90m Coil Guide",
+    "price": 90.0,
+    "raw": "90 m",
+    "trusted": false,
+    "city": "Pakistan"
+   }
+  ],
+  "reason": "-18.2% vs current",
+  "created": "2026-10-03"
+ },
+ {
+  "city": "Islamabad",
+  "mat_id": "ELE-007",
+  "name": "Copper house wire 7/29 (90 m coil)",
+  "old_rate": 185.0,
+  "new_rate": 164.64,
+  "low": 139.0,
+  "high": 190.28,
+  "unit": "m",
+  "change_pct": -11.01,
+  "sources": [
+   {
+    "url": "https://www.anwarcables.pk/product/7-29-single-core-cable-wire/",
+    "domain": "anwarcables.pk",
+    "quote": "Direct from Anwar Cables Bilal Gunj factory, this product is priced at ₨ 12,500 90m roll (approx. ₨ 139 per meter). Contact us via WhatsApp for instant volume quotes and nationwide cargo dispatch.",
+    "price": 139.0,
+    "raw": "139 m",
+    "trusted": false,
+    "city": "Pakistan"
+   },
+   {
+    "url": "https://chachatrader.com/products/pakistan-cables-7-29-pure-copper-wire-90m",
+    "domain": "chachatrader.com",
+    "quote": "Pakistan Cables 7/29 Wire 2.5mm – Heavy Duty House Wiring Best Price 90m Rs.15,450.00Rs.18,801.00",
+    "price": 190.28,
+    "raw": "17125.5 90 m coil",
+    "trusted": false,
+    "city": "Pakistan"
+   }
+  ],
+  "reason": "-11.0% vs current - single untrusted source",
+  "created": "2026-10-03"
+ },
+ {
+  "city": "Islamabad",
+  "mat_id": "ELE-008",
+  "name": "Copper house wire 7/36 (90 m coil)",
+  "old_rate": 310.0,
+  "new_rate": 208.89,
+  "low": 208.89,
+  "high": 208.89,
+  "unit": "m",
+  "change_pct": -32.62,
+  "sources": [
+   {
+    "url": "https://shop.mcipak.com/cables-wires/standard-cables/7-36-standard-wire/",
+    "domain": "shop.mcipak.com",
+    "quote": "7.36 STANDARD CABLE ₨ 18,800",
+    "price": 208.89,
+    "raw": "18800 90 m coil",
+    "trusted": false,
+    "city": "Pakistan"
+   }
+  ],
+  "reason": "-32.6% vs current - single untrusted source",
+  "created": "2026-10-03"
+ },
+ {
+  "city": "Islamabad",
+  "mat_id": "PWS-001",
+  "name": "PPR pipe 20 mm PN20",
+  "old_rate": 70.0,
+  "new_rate": 45.5,
+  "low": 41.0,
+  "high": 50.0,
+  "unit": "rft",
+  "change_pct": -35.0,
+  "sources": [
+   {
+    "url": "https://irfantraders.pk/product/steelex-ppr-pipe-pn-20-rates/",
+    "domain": "irfantraders.pk",
+    "quote": "Steelex upvc pipe 8″ SDR41",
+    "price": 41.0,
+    "raw": "41 rft",
+    "trusted": false,
+    "city": "Pakistan"
+   },
+   {
+    "url": "https://watertank.pk/product/pprc-pipe-pn-20-4m/",
+    "domain": "watertank.pk",
+    "quote": "Get PPR-C Pipes PN-20 at 50% discount | PPR Pipe: 25mm, 32mm, 40mm, 50mm, 63mm | 100% Food Grade Material | Free Delivery in Lahore | 50 years warranty",
+    "price": 50.0,
+    "raw": "50 rft",
+    "trusted": false,
+    "city": "Pakistan"
+   }
+  ],
+  "reason": "-35.0% vs current - single untrusted source",
+  "created": "2026-10-03"
+ },
+ {
+  "city": "Islamabad",
+  "mat_id": "PDR-001",
+  "name": "uPVC pipe 4 inch",
+  "old_rate": 220.0,
+  "new_rate": 365.2,
+  "low": 333.0,
+  "high": 397.4,
+  "unit": "rft",
+  "change_pct": 66.0,
+  "sources": [
+   {
+    "url": "https://newtech-pipes.com/pvc-pipe-price-pakistan-per-foot-length/",
+    "domain": "newtech-pipes.com",
+    "quote": "Call Us Today +92 333 5665265 | sales@newtech-pipes.com",
+    "price": 333.0,
+    "raw": "333 rft",
+    "trusted": false,
+    "city": "Pakistan"
+   },
+   {
+    "url": "https://offerswala.pk/products/pak-arab-astm-upvc-pipe-4-sdr-64-white-water-supply-irrigation-agriculture",
+    "domain": "offerswala.pk",
+    "quote": "Price per 20 Foot Pipe: Rs. 3,974",
+    "price": 397.4,
+    "raw": "3974 length",
+    "trusted": false,
+    "city": "Pakistan"
+   }
+  ],
+  "reason": "outlier",
+  "created": "2026-10-03"
+ },
+ {
+  "city": "Islamabad",
+  "mat_id": "FLR-001",
+  "name": "Porcelain floor tiles 24x24",
+  "old_rate": 260.0,
+  "new_rate": 220.0,
+  "low": 220.0,
+  "high": 220.0,
+  "unit": "sft",
+  "change_pct": -15.38,
+  "sources": [
+   {
+    "url": "https://nasirtiles.com/product-category/floor-tiles/",
+    "domain": "nasirtiles.com",
+    "quote": "Floor tiles in Islamabad from Rs 90 to Rs 350 per sq ft (2026).",
+    "price": 220.0,
+    "raw": "220 sq ft",
+    "trusted": false,
+    "city": "Islamabad"
+   }
+  ],
+  "reason": "-15.4% vs current - single untrusted source",
+  "created": "2026-10-03"
+ },
+ {
+  "city": "Islamabad",
+  "mat_id": "WPF-001",
+  "name": "Bitumen (roofing)",
+  "old_rate": 260.0,
+  "new_rate": 200.0,
+  "low": 180.0,
+  "high": 220.0,
+  "unit": "kg",
+  "change_pct": -23.08,
+  "sources": [
+   {
+    "url": "https://www.bitumenprices.com/bitumen-prices-today/",
+    "domain": "bitumenprices.com",
+    "quote": "What is the price of a 180 kg bitumen drum?",
+    "price": 180.0,
+    "raw": "180 kg",
+    "trusted": false,
+    "city": "Pakistan"
+   },
+   {
+    "url": "https://lakhwa.com/what-is-the-current-bitumen-price-in-pakistan-today/",
+    "domain": "lakhwa.com",
+    "quote": "A. The price of bitumen per kilogram in Pakistan typically ranges from PKR 180 to PKR 220, depending on the grade, quality, and supplier. Bulk purchases may offer better rates.",
+    "price": 220.0,
+    "raw": "220 kg",
+    "trusted": false,
+    "city": "Pakistan"
+   }
+  ],
+  "reason": "-23.1% vs current - single untrusted source",
+  "created": "2026-10-03"
+ },
+ {
+  "city": "Rawalpindi",
+  "mat_id": "CON-001",
+  "name": "Cement (OPC, 50 kg bag)",
+  "old_rate": 1435.5,
+  "new_rate": 1515.0,
+  "low": 1400.0,
+  "high": 1600.0,
+  "unit": "bag",
+  "change_pct": 5.54,
+  "sources": [
+   {
+    "url": "https://icons.com.pk/cement-rate-today",
+    "domain": "icons.com.pk",
+    "quote": "Rawalpindi | Rs. 1,372 – 1400 |",
+    "price": 1400.0,
+    "raw": "1400 bag",
+    "trusted": false,
+    "city": "Rawalpindi"
+   },
+   {
+    "url": "https://priceguide.pk/cement-price-in-pakistan/",
+    "domain": "priceguide.pk",
+    "quote": "Rawalpindi | Rs 1,515 – 1,560 |",
+    "price": 1515.0,
+    "raw": "1515 bag",
+    "trusted": false,
+    "city": "Rawalpindi"
+   },
+   {
+    "url": "https://checkprice.pk/today-cement-rate-in-pakistan/",
+    "domain": "checkprice.pk",
+    "quote": "Rawalpindi | Rs. 1,372 – 1,600 |",
+    "price": 1600.0,
+    "raw": "1600 bag",
+    "trusted": false,
+    "city": "Rawalpindi"
+   }
+  ],
+  "reason": "+5.5% vs current - single untrusted source",
+  "created": "2026-10-03"
+ },
+ {
+  "city": "Rawalpindi",
+  "mat_id": "RBR-002",
+  "name": "Steel bars Grade 60 (#4, 12 mm)",
+  "old_rate": 259.38,
+  "new_rate": 275.0,
+  "low": 275.0,
+  "high": 275.0,
+  "unit": "kg",
+  "change_pct": 6.02,
+  "sources": [
+   {
+    "url": "https://kamransteel.com/steel-prices-in-pakistan/",
+    "domain": "kamransteel.com",
+    "quote": "Rawalpindi | Rs 275 | Rs",
+    "price": 275.0,
+    "raw": "275 kg",
+    "trusted": false,
+    "city": "Rawalpindi"
+   }
+  ],
+  "reason": "+6.0% vs current - single untrusted source",
+  "created": "2026-10-03"
+ },
+ {
+  "city": "Lahore",
+  "mat_id": "CON-001",
+  "name": "Cement (OPC, 50 kg bag)",
+  "old_rate": 1406.5,
+  "new_rate": 1532.5,
+  "low": 1515.0,
+  "high": 1550.0,
+  "unit": "bag",
+  "change_pct": 8.96,
+  "sources": [
+   {
+    "url": "https://icons.com.pk/cement-rate-today",
+    "domain": "icons.com.pk",
+    "quote": "Lahore | Rs. 1,400 – 1,550 |",
+    "price": 1550.0,
+    "raw": "1550 bag",
+    "trusted": false,
+    "city": "Lahore"
+   },
+   {
+    "url": "https://priceguide.pk/cement-price-in-pakistan/",
+    "domain": "priceguide.pk",
+    "quote": "Lahore | Rs 1,515 – 1,560 |",
+    "price": 1515.0,
+    "raw": "1515 bag",
+    "trusted": false,
+    "city": "Lahore"
+   }
+  ],
+  "reason": "+9.0% vs current",
+  "created": "2026-10-03"
+ },
+ {
+  "city": "Lahore",
+  "mat_id": "RBR-002",
+  "name": "Steel bars Grade 60 (#4, 12 mm)",
+  "old_rate": 254.14,
+  "new_rate": 233.5,
+  "low": 221.0,
+  "high": 246.0,
+  "unit": "kg",
+  "change_pct": -8.12,
+  "sources": [
+   {
+    "url": "https://icons.com.pk/steel-rate-today",
+    "domain": "icons.com.pk",
+    "quote": "Lahore | 246 | 246,000 |",
+    "price": 246.0,
+    "raw": "246 kg",
+    "trusted": false,
+    "city": "Lahore"
+   },
+   {
+    "url": "https://pricesin.pk/saria-rate-today-in-pakistan/",
+    "domain": "pricesin.pk",
+    "quote": "Rs. 202 – Rs. 240 per kg",
+    "price": 221.0,
+    "raw": "221 kg",
+    "trusted": false,
+    "city": "Lahore"
+   }
+  ],
+  "reason": "-8.1% vs current - single untrusted source",
+  "created": "2026-10-03"
+ },
+ {
+  "city": "Karachi",
+  "mat_id": "RBR-002",
+  "name": "Steel bars Grade 60 (#4, 12 mm)",
+  "old_rate": 272.48,
+  "new_rate": 234.5,
+  "low": 221.0,
+  "high": 248.0,
+  "unit": "kg",
+  "change_pct": -13.94,
+  "sources": [
+   {
+    "url": "https://icons.com.pk/steel-rate-today",
+    "domain": "icons.com.pk",
+    "quote": "Karachi | 248 | 248,000 |",
+    "price": 248.0,
+    "raw": "248 kg",
+    "trusted": false,
+    "city": "Karachi"
+   },
+   {
+    "url": "https://pricesin.pk/saria-rate-today-in-pakistan/",
+    "domain": "pricesin.pk",
+    "quote": "Rs. 202 – Rs. 240 per kg",
+    "price": 221.0,
+    "raw": "221 kg",
+    "trusted": false,
+    "city": "Karachi"
+   }
+  ],
+  "reason": "-13.9% vs current - single untrusted source",
+  "created": "2026-10-03"
+ },
+ {
+  "city": "Peshawar",
+  "mat_id": "CON-001",
+  "name": "Cement (OPC, 50 kg bag)",
+  "old_rate": 1464.5,
+  "new_rate": 1520.0,
+  "low": 1520.0,
+  "high": 1520.0,
+  "unit": "bag",
+  "change_pct": 3.79,
+  "sources": [
+   {
+    "url": "https://icons.com.pk/cement-rate-today",
+    "domain": "icons.com.pk",
+    "quote": "Peshawar | Rs. 1,350 – 1,520 |",
+    "price": 1520.0,
+    "raw": "1520 bag",
+    "trusted": false,
+    "city": "Peshawar"
+   }
+  ],
+  "reason": "+3.8% vs current - single untrusted source",
+  "created": "2026-10-03"
+ },
+ {
+  "city": "Peshawar",
+  "mat_id": "RBR-002",
+  "name": "Steel bars Grade 60 (#4, 12 mm)",
+  "old_rate": 264.62,
+  "new_rate": 246.0,
+  "low": 246.0,
+  "high": 246.0,
+  "unit": "kg",
+  "change_pct": -7.04,
+  "sources": [
+   {
+    "url": "https://icons.com.pk/steel-rate-today",
+    "domain": "icons.com.pk",
+    "quote": "Peshawar | 246 | 246,000 |",
+    "price": 246.0,
+    "raw": "246 kg",
+    "trusted": false,
+    "city": "Peshawar"
+   }
+  ],
+  "reason": "-7.0% vs current - single untrusted source",
+  "created": "2026-10-03"
+ },
+ {
+  "city": "Quetta",
+  "mat_id": "CON-001",
+  "name": "Cement (OPC, 50 kg bag)",
+  "old_rate": 1566.0,
+  "new_rate": 1450.0,
+  "low": 1450.0,
+  "high": 1450.0,
+  "unit": "bag",
+  "change_pct": -7.41,
+  "sources": [
+   {
+    "url": "https://priceguide.pk/cement-price-in-pakistan/",
+    "domain": "priceguide.pk",
+    "quote": "Quetta | Rs 1,450 – 1,555 |",
+    "price": 1450.0,
+    "raw": "1450 bag",
+    "trusted": false,
+    "city": "Quetta"
+   }
+  ],
+  "reason": "-7.4% vs current - single untrusted source",
+  "created": "2026-10-03"
+ },
+ {
+  "city": "Quetta",
+  "mat_id": "RBR-002",
+  "name": "Steel bars Grade 60 (#4, 12 mm)",
+  "old_rate": 282.96,
+  "new_rate": 247.0,
+  "low": 247.0,
+  "high": 247.0,
+  "unit": "kg",
+  "change_pct": -12.71,
+  "sources": [
+   {
+    "url": "https://icons.com.pk/steel-rate-today",
+    "domain": "icons.com.pk",
+    "quote": "Quetta | 247 | 247,000 |",
+    "price": 247.0,
+    "raw": "247 kg",
+    "trusted": false,
+    "city": "Quetta"
+   }
+  ],
+  "reason": "-12.7% vs current - single untrusted source",
+  "created": "2026-10-03"
+ }
+]
