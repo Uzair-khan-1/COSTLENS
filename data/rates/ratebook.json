@@ -1,6 +1,6 @@
 {
  "format": "costlens-ratebook",
- "updated_at": "2026-10-03T06:13:23",
+ "updated_at": "2026-10-05T02:07:18",
  "base_date": "2026-09-01",
  "cities": {
   "Islamabad": {
@@ -9,28 +9,28 @@
     "low": 1383.5,
     "high": 1537.5,
     "unit": "bag",
-    "as_of": "2026-10-03",
+    "as_of": "2026-10-05",
     "source": "icons.com.pk",
     "url": "https://icons.com.pk/cement-rate-today",
-    "quote": "Islamabad | Rs. 1,367 – 1400",
+    "quote": "Islamabad | Rs. 1,367 – 1400 |",
     "n_sources": 4,
     "trusted": false,
     "national": false,
-    "approved_by": "agent (auto)"
+    "approved_by": "agent (confirmed)"
    },
    "RBR-002": {
     "rate": 262.0,
     "low": 247.0,
     "high": 277.0,
     "unit": "kg",
-    "as_of": "2026-10-03",
+    "as_of": "2026-10-05",
     "source": "icons.com.pk",
     "url": "https://icons.com.pk/steel-rate-today",
     "quote": "Islamabad | 247 | 247,000 |",
     "n_sources": 2,
     "trusted": false,
     "national": false,
-    "approved_by": "agent (auto)"
+    "approved_by": "agent (confirmed)"
    },
    "PNT-003": {
     "rate": 4000.0,
@@ -61,6 +61,36 @@
     "trusted": false,
     "national": false,
     "approved_by": "agent (auto)"
+   },
+   "CON-001": {
+    "rate": 1436.0,
+    "low": 1386.0,
+    "high": 1537.5,
+    "unit": "bag",
+    "as_of": "2026-10-05",
+    "source": "icons.com.pk",
+    "url": "https://icons.com.pk/cement-rate-today",
+    "quote": "Rawalpindi | Rs. 1,372 – 1400",
+    "n_sources": 4,
+    "trusted": false,
+    "national": false,
+    "approved_by": "agent (auto)"
+   }
+  },
+  "Lahore": {
+   "RBR-002": {
+    "rate": 252.5,
+    "low": 221.0,
+    "high": 277.0,
+    "unit": "kg",
+    "as_of": "2026-10-05",
+    "source": "icons.com.pk",
+    "url": "https://icons.com.pk/steel-rate-today",
+    "quote": "Lahore | 246 | 246,000 |",
+    "n_sources": 4,
+    "trusted": false,
+    "national": false,
+    "approved_by": "agent (auto)"
    }
   },
   "Karachi": {
@@ -69,10 +99,56 @@
     "low": 1500.0,
     "high": 1505.0,
     "unit": "bag",
-    "as_of": "2026-10-03",
+    "as_of": "2026-10-05",
     "source": "icons.com.pk",
     "url": "https://icons.com.pk/cement-rate-today",
     "quote": "Karachi | Rs. 1,350 – 1,500 |",
+    "n_sources": 2,
+    "trusted": false,
+    "national": false,
+    "approved_by": "agent (confirmed)"
+   },
+   "MAS-001": {
+    "rate": 18.12,
+    "low": 18.0,
+    "high": 18.25,
+    "unit": "Nos",
+    "as_of": "2026-10-05",
+    "source": "checkprice.pk",
+    "url": "https://checkprice.pk/brick-price-in-pakistan-today/",
+    "quote": "Rs. 16.50 to Rs. 19.50 per piece",
+    "n_sources": 2,
+    "trusted": false,
+    "national": false,
+    "approved_by": "agent (auto)"
+   }
+  },
+  "Peshawar": {
+   "MAS-001": {
+    "rate": 18.0,
+    "low": 18.0,
+    "high": 18.25,
+    "unit": "Nos",
+    "as_of": "2026-10-05",
+    "source": "pricedata.pk",
+    "url": "https://www.pricedata.pk/construction/bricks-rate-in-pakistan",
+    "quote": "Rs. 17,000 - 19,500 per 1000",
+    "n_sources": 3,
+    "trusted": false,
+    "national": false,
+    "approved_by": "agent (auto)"
+   }
+  },
+  "Quetta": {
+   "MAS-001": {
+    "rate": 18.12,
+    "low": 18.0,
+    "high": 18.25,
+    "unit": "Nos",
+    "as_of": "2026-10-05",
+    "source": "pricedata.pk",
+    "url": "https://www.pricedata.pk/construction/bricks-rate-in-pakistan",
+    "quote": "Rs. 17,000 - 19,500 per 1000",
     "n_sources": 2,
     "trusted": false,
     "national": false,

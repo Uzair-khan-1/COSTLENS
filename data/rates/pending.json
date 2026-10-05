@@ -4,11 +4,11 @@
   "mat_id": "MAS-001",
   "name": "Bricks, A class (awwal)",
   "old_rate": 17.5,
-  "new_rate": 23.75,
+  "new_rate": 19.5,
   "low": 19.5,
-  "high": 28.0,
+  "high": 19.5,
   "unit": "Nos",
-  "change_pct": 35.71,
+  "change_pct": 11.43,
   "sources": [
    {
     "url": "https://www.brickpakistan.com/materials/islamabad",
@@ -18,43 +18,43 @@
     "raw": "19500 1000 bricks",
     "trusted": false,
     "city": "Islamabad"
-   },
-   {
-    "url": "https://www.margallacrush.com/2025/09/construction-material-rates-rawalpindi-islamabad-daily-update.html",
-    "domain": "margallacrush.com",
-    "quote": "Peshawari Bricks (A Grade) | 28",
-    "price": 28.0,
-    "raw": "28 brick",
-    "trusted": false,
-    "city": "Islamabad"
    }
   ],
-  "reason": "+35.7% vs current - single untrusted source",
-  "created": "2026-10-03"
+  "reason": "+11.4% vs current - single untrusted source",
+  "created": "2026-10-05"
  },
  {
   "city": "Islamabad",
   "mat_id": "CON-004",
   "name": "Sand for concrete (Lawrencepur / Chenab)",
   "old_rate": 135.0,
-  "new_rate": 120.0,
-  "low": 120.0,
-  "high": 120.0,
+  "new_rate": 86.25,
+  "low": 67.5,
+  "high": 105.0,
   "unit": "cft",
-  "change_pct": -11.11,
+  "change_pct": -36.11,
   "sources": [
+   {
+    "url": "https://checkprice.pk/sand-price-in-pakistan/",
+    "domain": "checkprice.pk",
+    "quote": "Rs. 5,500–8,000 / 100 CFT",
+    "price": 67.5,
+    "raw": "6750 100 CFT",
+    "trusted": false,
+    "city": "Pakistan"
+   },
    {
     "url": "https://www.margallacrush.com/2025/09/construction-material-rates-rawalpindi-islamabad-daily-update.html",
     "domain": "margallacrush.com",
-    "quote": "Sand Lawrencepur (Harrow) | 120 |",
-    "price": 120.0,
-    "raw": "120 cft",
+    "quote": "Sand Lawrencepur (Regular) | 105 |",
+    "price": 105.0,
+    "raw": "105 cft",
     "trusted": false,
     "city": "Pakistan"
    }
   ],
-  "reason": "-11.1% vs current - single untrusted source",
-  "created": "2026-10-03"
+  "reason": "-36.1% vs current - single untrusted source",
+  "created": "2026-10-05"
  },
  {
   "city": "Islamabad",
@@ -70,7 +70,7 @@
    {
     "url": "https://checkprice.pk/crush-price-in-pakistan-bajri-rate-today/",
     "domain": "checkprice.pk",
-    "quote": "Margalla: Rs. 135 – 148",
+    "quote": "Islamabad / Rawalpindi Taxila & Margalla Quarry Basin | Sargodha: Rs. 115 – 125 Margalla: Rs. 135 – 148",
     "price": 141.5,
     "raw": "141.5 cft",
     "trusted": false,
@@ -79,7 +79,7 @@
    {
     "url": "https://propertydealer.pk/today-bajri-rate-in-pakistan",
     "domain": "propertydealer.pk",
-    "quote": "Islamabad / Rawalpindi | Rs. 130 – 145",
+    "quote": "Islamabad / Rawalpindi | Rs. 130 – 145 | Rs. 105,000 – 120,000",
     "price": 137.5,
     "raw": "137.5 cft",
     "trusted": false,
@@ -96,7 +96,7 @@
    }
   ],
   "reason": "-27.6% vs current",
-  "created": "2026-10-03"
+  "created": "2026-10-05"
  },
  {
   "city": "Islamabad",
@@ -138,7 +138,7 @@
    }
   ],
   "reason": "-18.2% vs current",
-  "created": "2026-10-03"
+  "created": "2026-10-05"
  },
  {
   "city": "Islamabad",
@@ -154,9 +154,9 @@
    {
     "url": "https://www.anwarcables.pk/product/7-29-single-core-cable-wire/",
     "domain": "anwarcables.pk",
-    "quote": "Direct from Anwar Cables Bilal Gunj factory, this product is priced at ₨ 12,500 90m roll (approx. ₨ 139 per meter). Contact us via WhatsApp for instant volume quotes and nationwide cargo dispatch.",
+    "quote": "Rate per Meter: ₨ 139",
     "price": 139.0,
-    "raw": "139 m",
+    "raw": "139 meter",
     "trusted": false,
     "city": "Pakistan"
    },
@@ -171,64 +171,64 @@
    }
   ],
   "reason": "-11.0% vs current - single untrusted source",
-  "created": "2026-10-03"
+  "created": "2026-10-05"
  },
  {
   "city": "Islamabad",
   "mat_id": "ELE-008",
   "name": "Copper house wire 7/36 (90 m coil)",
   "old_rate": 310.0,
-  "new_rate": 208.89,
-  "low": 208.89,
-  "high": 208.89,
+  "new_rate": 170.5,
+  "low": 170.5,
+  "high": 170.5,
   "unit": "m",
-  "change_pct": -32.62,
+  "change_pct": -45.0,
   "sources": [
    {
-    "url": "https://shop.mcipak.com/cables-wires/standard-cables/7-36-standard-wire/",
-    "domain": "shop.mcipak.com",
-    "quote": "7.36 STANDARD CABLE ₨ 18,800",
-    "price": 208.89,
-    "raw": "18800 90 m coil",
+    "url": "https://eleco.pk/product/7-36-electric-wire/",
+    "domain": "eleco.pk",
+    "quote": "₨ 15,345",
+    "price": 170.5,
+    "raw": "15345 90 m coil",
     "trusted": false,
     "city": "Pakistan"
    }
   ],
-  "reason": "-32.6% vs current - single untrusted source",
-  "created": "2026-10-03"
+  "reason": "outlier",
+  "created": "2026-10-05"
  },
  {
   "city": "Islamabad",
   "mat_id": "PWS-001",
   "name": "PPR pipe 20 mm PN20",
   "old_rate": 70.0,
-  "new_rate": 45.5,
+  "new_rate": 59.51,
   "low": 41.0,
-  "high": 50.0,
+  "high": 78.02,
   "unit": "rft",
-  "change_pct": -35.0,
+  "change_pct": -14.99,
   "sources": [
    {
-    "url": "https://irfantraders.pk/product/steelex-ppr-pipe-pn-20-rates/",
-    "domain": "irfantraders.pk",
-    "quote": "Steelex upvc pipe 8″ SDR41",
-    "price": 41.0,
-    "raw": "41 rft",
+    "url": "https://icons.com.pk/pprc-pipe-price-today",
+    "domain": "icons.com.pk",
+    "quote": "20mm | 186 | 256 | 299",
+    "price": 78.02,
+    "raw": "256 meter",
     "trusted": false,
     "city": "Pakistan"
    },
    {
-    "url": "https://watertank.pk/product/pprc-pipe-pn-20-4m/",
-    "domain": "watertank.pk",
-    "quote": "Get PPR-C Pipes PN-20 at 50% discount | PPR Pipe: 25mm, 32mm, 40mm, 50mm, 63mm | 100% Food Grade Material | Free Delivery in Lahore | 50 years warranty",
-    "price": 50.0,
-    "raw": "50 rft",
+    "url": "https://irfantraders.pk/product/steelex-ppr-pipe-pn-20-rates/",
+    "domain": "irfantraders.pk",
+    "quote": "Steelex upvc pipe 6″ SDR41",
+    "price": 41.0,
+    "raw": "41 rft",
     "trusted": false,
     "city": "Pakistan"
    }
   ],
-  "reason": "-35.0% vs current - single untrusted source",
-  "created": "2026-10-03"
+  "reason": "-15.0% vs current - single untrusted source",
+  "created": "2026-10-05"
  },
  {
   "city": "Islamabad",
@@ -261,7 +261,7 @@
    }
   ],
   "reason": "outlier",
-  "created": "2026-10-03"
+  "created": "2026-10-05"
  },
  {
   "city": "Islamabad",
@@ -285,18 +285,42 @@
    }
   ],
   "reason": "-15.4% vs current - single untrusted source",
-  "created": "2026-10-03"
+  "created": "2026-10-05"
+ },
+ {
+  "city": "Islamabad",
+  "mat_id": "PNT-003",
+  "name": "Interior emulsion paint (gallon)",
+  "old_rate": 4000.0,
+  "new_rate": 4095.0,
+  "low": 4095.0,
+  "high": 4095.0,
+  "unit": "gal",
+  "change_pct": 2.37,
+  "sources": [
+   {
+    "url": "https://icons.com.pk/paint-prices-today",
+    "domain": "icons.com.pk",
+    "quote": "Islamabad / Rawalpindi | 850 – 1,400 | 1,200 – 1,800 | Premium buyers: Dulux and Berger dominate the market.",
+    "price": 4095.0,
+    "raw": "1125 litre",
+    "trusted": false,
+    "city": "Islamabad"
+   }
+  ],
+  "reason": "+2.4% vs current - single untrusted source",
+  "created": "2026-10-05"
  },
  {
   "city": "Islamabad",
   "mat_id": "WPF-001",
   "name": "Bitumen (roofing)",
   "old_rate": 260.0,
-  "new_rate": 200.0,
+  "new_rate": 190.0,
   "low": 180.0,
-  "high": 220.0,
+  "high": 200.0,
   "unit": "kg",
-  "change_pct": -23.08,
+  "change_pct": -26.92,
   "sources": [
    {
     "url": "https://www.bitumenprices.com/bitumen-prices-today/",
@@ -310,57 +334,15 @@
    {
     "url": "https://lakhwa.com/what-is-the-current-bitumen-price-in-pakistan-today/",
     "domain": "lakhwa.com",
-    "quote": "A. The price of bitumen per kilogram in Pakistan typically ranges from PKR 180 to PKR 220, depending on the grade, quality, and supplier. Bulk purchases may offer better rates.",
-    "price": 220.0,
-    "raw": "220 kg",
+    "quote": "The price of bitumen per kilogram in Pakistan typically ranges from PKR 180 to PKR 220, depending on the grade, quality, and supplier.",
+    "price": 200.0,
+    "raw": "200 kg",
     "trusted": false,
     "city": "Pakistan"
    }
   ],
-  "reason": "-23.1% vs current - single untrusted source",
-  "created": "2026-10-03"
- },
- {
-  "city": "Rawalpindi",
-  "mat_id": "CON-001",
-  "name": "Cement (OPC, 50 kg bag)",
-  "old_rate": 1435.5,
-  "new_rate": 1515.0,
-  "low": 1400.0,
-  "high": 1600.0,
-  "unit": "bag",
-  "change_pct": 5.54,
-  "sources": [
-   {
-    "url": "https://icons.com.pk/cement-rate-today",
-    "domain": "icons.com.pk",
-    "quote": "Rawalpindi | Rs. 1,372 – 1400 |",
-    "price": 1400.0,
-    "raw": "1400 bag",
-    "trusted": false,
-    "city": "Rawalpindi"
-   },
-   {
-    "url": "https://priceguide.pk/cement-price-in-pakistan/",
-    "domain": "priceguide.pk",
-    "quote": "Rawalpindi | Rs 1,515 – 1,560 |",
-    "price": 1515.0,
-    "raw": "1515 bag",
-    "trusted": false,
-    "city": "Rawalpindi"
-   },
-   {
-    "url": "https://checkprice.pk/today-cement-rate-in-pakistan/",
-    "domain": "checkprice.pk",
-    "quote": "Rawalpindi | Rs. 1,372 – 1,600 |",
-    "price": 1600.0,
-    "raw": "1600 bag",
-    "trusted": false,
-    "city": "Rawalpindi"
-   }
-  ],
-  "reason": "+5.5% vs current - single untrusted source",
-  "created": "2026-10-03"
+  "reason": "-26.9% vs current - single untrusted source",
+  "created": "2026-10-05"
  },
  {
   "city": "Rawalpindi",
@@ -384,7 +366,130 @@
    }
   ],
   "reason": "+6.0% vs current - single untrusted source",
-  "created": "2026-10-03"
+  "created": "2026-10-05"
+ },
+ {
+  "city": "Rawalpindi",
+  "mat_id": "MAS-001",
+  "name": "Bricks, A class (awwal)",
+  "old_rate": 18.12,
+  "new_rate": 23.75,
+  "low": 19.5,
+  "high": 28.0,
+  "unit": "Nos",
+  "change_pct": 31.07,
+  "sources": [
+   {
+    "url": "https://www.margallacrush.com/2025/09/construction-material-rates-rawalpindi-islamabad-daily-update.html",
+    "domain": "margallacrush.com",
+    "quote": "Peshawari Bricks (A Grade) | 28 |",
+    "price": 28.0,
+    "raw": "28 brick",
+    "trusted": false,
+    "city": "Rawalpindi"
+   },
+   {
+    "url": "https://www.brickpakistan.com/materials/islamabad",
+    "domain": "brickpakistan.com",
+    "quote": "StandardAwal (A-class)estimate | 17,000–22,000 | 2026-07-02 |",
+    "price": 19.5,
+    "raw": "19500 1000 bricks",
+    "trusted": false,
+    "city": "Rawalpindi"
+   }
+  ],
+  "reason": "+31.1% vs current - single untrusted source",
+  "created": "2026-10-05"
+ },
+ {
+  "city": "Rawalpindi",
+  "mat_id": "CON-004",
+  "name": "Sand for concrete (Lawrencepur / Chenab)",
+  "old_rate": 133.65,
+  "new_rate": 120.0,
+  "low": 120.0,
+  "high": 120.0,
+  "unit": "cft",
+  "change_pct": -10.21,
+  "sources": [
+   {
+    "url": "https://www.margallacrush.com/2025/09/construction-material-rates-rawalpindi-islamabad-daily-update.html",
+    "domain": "margallacrush.com",
+    "quote": "Sand Lawrencepur (Harrow) | 120 |",
+    "price": 120.0,
+    "raw": "120 cft",
+    "trusted": false,
+    "city": "Rawalpindi"
+   }
+  ],
+  "reason": "-10.2% vs current - single untrusted source",
+  "created": "2026-10-05"
+ },
+ {
+  "city": "Rawalpindi",
+  "mat_id": "CON-006",
+  "name": "Crush / bajri 3/4 inch",
+  "old_rate": 188.1,
+  "new_rate": 123.75,
+  "low": 115.0,
+  "high": 132.5,
+  "unit": "cft",
+  "change_pct": -34.21,
+  "sources": [
+   {
+    "url": "https://checkprice.pk/crush-price-in-pakistan-bajri-rate-today/",
+    "domain": "checkprice.pk",
+    "quote": "Rs. 125 – 140\nPer CFT",
+    "price": 132.5,
+    "raw": "132.5 CFT",
+    "trusted": false,
+    "city": "Pakistan"
+   },
+   {
+    "url": "https://www.margallacrush.com/2025/09/construction-material-rates-rawalpindi-islamabad-daily-update.html",
+    "domain": "margallacrush.com",
+    "quote": "Margalla Crush (25–38 mm) | 115 |",
+    "price": 115.0,
+    "raw": "115 cft",
+    "trusted": false,
+    "city": "Pakistan"
+   }
+  ],
+  "reason": "-34.2% vs current - single untrusted source",
+  "created": "2026-10-05"
+ },
+ {
+  "city": "Rawalpindi",
+  "mat_id": "FLR-001",
+  "name": "Porcelain floor tiles 24x24",
+  "old_rate": 257.4,
+  "new_rate": 212.5,
+  "low": 210.0,
+  "high": 215.0,
+  "unit": "sft",
+  "change_pct": -17.44,
+  "sources": [
+   {
+    "url": "https://checkprice.pk/tiles-price-in-pakistan/",
+    "domain": "checkprice.pk",
+    "quote": "Ceramic Floor Tiles (16×16 in) | 8 Pcs = 14.2 Sq. Ft | Rs. 130 – 210 | Rs. 1,850 – 2,980 |",
+    "price": 210.0,
+    "raw": "210 sft",
+    "trusted": false,
+    "city": "Pakistan"
+   },
+   {
+    "url": "https://nasirtiles.com/tiles-price-in-pakistan/",
+    "domain": "nasirtiles.com",
+    "quote": "Porcelain floor tiles | 24×24 (60×60) | Rs 130 to Rs 300 |",
+    "price": 215.0,
+    "raw": "215 sq ft",
+    "trusted": false,
+    "city": "Pakistan"
+   }
+  ],
+  "reason": "-17.4% vs current",
+  "created": "2026-10-05"
  },
  {
   "city": "Lahore",
@@ -417,51 +522,141 @@
    }
   ],
   "reason": "+9.0% vs current",
-  "created": "2026-10-03"
+  "created": "2026-10-05"
  },
  {
   "city": "Lahore",
-  "mat_id": "RBR-002",
-  "name": "Steel bars Grade 60 (#4, 12 mm)",
-  "old_rate": 254.14,
-  "new_rate": 233.5,
-  "low": 221.0,
-  "high": 246.0,
-  "unit": "kg",
-  "change_pct": -8.12,
+  "mat_id": "MAS-001",
+  "name": "Bricks, A class (awwal)",
+  "old_rate": 16.97,
+  "new_rate": 18.12,
+  "low": 18.0,
+  "high": 18.25,
+  "unit": "Nos",
+  "change_pct": 6.78,
   "sources": [
    {
-    "url": "https://icons.com.pk/steel-rate-today",
-    "domain": "icons.com.pk",
-    "quote": "Lahore | 246 | 246,000 |",
-    "price": 246.0,
-    "raw": "246 kg",
+    "url": "https://www.pricedata.pk/construction/bricks-rate-in-pakistan",
+    "domain": "pricedata.pk",
+    "quote": "Rs. 17,000 - 19,500 per 1000",
+    "price": 18.25,
+    "raw": "18250 1000",
     "trusted": false,
-    "city": "Lahore"
+    "city": "Pakistan"
    },
    {
-    "url": "https://pricesin.pk/saria-rate-today-in-pakistan/",
-    "domain": "pricesin.pk",
-    "quote": "Rs. 202 – Rs. 240 per kg",
-    "price": 221.0,
-    "raw": "221 kg",
+    "url": "https://checkprice.pk/brick-price-in-pakistan-today/",
+    "domain": "checkprice.pk",
+    "quote": "Rs. 16.50 to Rs. 19.50 per piece",
+    "price": 18.0,
+    "raw": "18 piece",
+    "trusted": false,
+    "city": "Pakistan"
+   }
+  ],
+  "reason": "+6.8% vs current",
+  "created": "2026-10-05"
+ },
+ {
+  "city": "Lahore",
+  "mat_id": "CON-004",
+  "name": "Sand for concrete (Lawrencepur / Chenab)",
+  "old_rate": 130.95,
+  "new_rate": 150.0,
+  "low": 150.0,
+  "high": 150.0,
+  "unit": "cft",
+  "change_pct": 14.55,
+  "sources": [
+   {
+    "url": "https://www.margallacrush.com/2025/09/sand-bajri-prices-in-pakistan-2026.html",
+    "domain": "margallacrush.com",
+    "quote": "Chenab sand in Lahore sells at PKR 150 per cft for Grade A quality, while Grade B sand averages PKR 130 per cft.",
+    "price": 150.0,
+    "raw": "150 cft",
     "trusted": false,
     "city": "Lahore"
    }
   ],
-  "reason": "-8.1% vs current - single untrusted source",
-  "created": "2026-10-03"
+  "reason": "+14.5% vs current - single untrusted source",
+  "created": "2026-10-05"
+ },
+ {
+  "city": "Lahore",
+  "mat_id": "CON-006",
+  "name": "Crush / bajri 3/4 inch",
+  "old_rate": 184.3,
+  "new_rate": 116.25,
+  "low": 100.0,
+  "high": 132.5,
+  "unit": "cft",
+  "change_pct": -36.92,
+  "sources": [
+   {
+    "url": "https://checkprice.pk/crush-price-in-pakistan-bajri-rate-today/",
+    "domain": "checkprice.pk",
+    "quote": "Rs. 125 – 140\nPer CFT",
+    "price": 132.5,
+    "raw": "132.5 CFT",
+    "trusted": false,
+    "city": "Pakistan"
+   },
+   {
+    "url": "https://propertydealer.pk/today-bajri-rate-in-pakistan",
+    "domain": "propertydealer.pk",
+    "quote": "For 100 Square Feet (at 5-inch thickness): You will roughly need 40 to 45 CFT of Bajri.",
+    "price": 100.0,
+    "raw": "100 cft",
+    "trusted": false,
+    "city": "Pakistan"
+   }
+  ],
+  "reason": "-36.9% vs current - single untrusted source",
+  "created": "2026-10-05"
+ },
+ {
+  "city": "Lahore",
+  "mat_id": "FLR-001",
+  "name": "Porcelain floor tiles 24x24",
+  "old_rate": 252.2,
+  "new_rate": 192.5,
+  "low": 175.0,
+  "high": 210.0,
+  "unit": "sft",
+  "change_pct": -23.67,
+  "sources": [
+   {
+    "url": "https://checkprice.pk/tiles-price-in-pakistan/",
+    "domain": "checkprice.pk",
+    "quote": "Ceramic Floor Tiles (16×16 in) | 8 Pcs = 14.2 Sq. Ft | Rs. 130 – 210 | Rs. 1,850 – 2,980 |",
+    "price": 210.0,
+    "raw": "210 sft",
+    "trusted": false,
+    "city": "Pakistan"
+   },
+   {
+    "url": "https://nasirtiles.com/master-tiles-24x24-price-in-pakistan/",
+    "domain": "nasirtiles.com",
+    "quote": "Rs 130–Rs 220 per square foot",
+    "price": 175.0,
+    "raw": "175 square foot",
+    "trusted": false,
+    "city": "Pakistan"
+   }
+  ],
+  "reason": "-23.7% vs current - single untrusted source",
+  "created": "2026-10-05"
  },
  {
   "city": "Karachi",
   "mat_id": "RBR-002",
   "name": "Steel bars Grade 60 (#4, 12 mm)",
   "old_rate": 272.48,
-  "new_rate": 234.5,
+  "new_rate": 248.0,
   "low": 221.0,
-  "high": 248.0,
+  "high": 277.0,
   "unit": "kg",
-  "change_pct": -13.94,
+  "change_pct": -8.98,
   "sources": [
    {
     "url": "https://icons.com.pk/steel-rate-today",
@@ -480,21 +675,111 @@
     "raw": "221 kg",
     "trusted": false,
     "city": "Karachi"
+   },
+   {
+    "url": "https://kamransteel.com/steel-prices-in-pakistan/",
+    "domain": "kamransteel.com",
+    "quote": "کامران اسٹیل کا آج کا ریٹ گریڈ 60 سریا کے لیے 277 روپے فی کلو اور گریڈ 40 کے لیے 275 روپے فی کلو ہے۔ ایک ٹن گریڈ 60 سریا 277,000 روپے کا ہے۔ Is the steel rate different in Lahore, Karachi or Islamabad",
+    "price": 277.0,
+    "raw": "277 kg",
+    "trusted": false,
+    "city": "Karachi"
    }
   ],
-  "reason": "-13.9% vs current - single untrusted source",
-  "created": "2026-10-03"
+  "reason": "-9.0% vs current - single untrusted source",
+  "created": "2026-10-05"
+ },
+ {
+  "city": "Karachi",
+  "mat_id": "CON-004",
+  "name": "Sand for concrete (Lawrencepur / Chenab)",
+  "old_rate": 140.4,
+  "new_rate": 72.5,
+  "low": 72.5,
+  "high": 72.5,
+  "unit": "cft",
+  "change_pct": -48.36,
+  "sources": [
+   {
+    "url": "https://checkprice.pk/sand-price-in-pakistan/",
+    "domain": "checkprice.pk",
+    "quote": "Rs. 6,000 – 8,500 / 100 CFT",
+    "price": 72.5,
+    "raw": "7250 100 CFT",
+    "trusted": false,
+    "city": "Karachi"
+   }
+  ],
+  "reason": "outlier",
+  "created": "2026-10-05"
+ },
+ {
+  "city": "Karachi",
+  "mat_id": "CON-006",
+  "name": "Crush / bajri 3/4 inch",
+  "old_rate": 197.6,
+  "new_rate": 116.25,
+  "low": 100.0,
+  "high": 132.5,
+  "unit": "cft",
+  "change_pct": -41.17,
+  "sources": [
+   {
+    "url": "https://checkprice.pk/crush-price-in-pakistan-bajri-rate-today/",
+    "domain": "checkprice.pk",
+    "quote": "Rs. 125 – 140\nPer CFT",
+    "price": 132.5,
+    "raw": "132.5 CFT",
+    "trusted": false,
+    "city": "Pakistan"
+   },
+   {
+    "url": "https://propertydealer.pk/today-bajri-rate-in-pakistan",
+    "domain": "propertydealer.pk",
+    "quote": "For 100 Square Feet (at 5-inch thickness): You will roughly need 40 to 45 CFT of Bajri.",
+    "price": 100.0,
+    "raw": "100 cft",
+    "trusted": false,
+    "city": "Pakistan"
+   }
+  ],
+  "reason": "outlier",
+  "created": "2026-10-05"
+ },
+ {
+  "city": "Karachi",
+  "mat_id": "FLR-001",
+  "name": "Porcelain floor tiles 24x24",
+  "old_rate": 270.4,
+  "new_rate": 250.0,
+  "low": 250.0,
+  "high": 250.0,
+  "unit": "sft",
+  "change_pct": -7.54,
+  "sources": [
+   {
+    "url": "https://checkprice.pk/tiles-price-in-pakistan/",
+    "domain": "checkprice.pk",
+    "quote": "Shabbir Tiles (Stile) | Karachi (ISO Certified) | Rs. 140 – 250 | Rs. 310 – 550 |",
+    "price": 250.0,
+    "raw": "250 sft",
+    "trusted": false,
+    "city": "Karachi"
+   }
+  ],
+  "reason": "-7.5% vs current - single untrusted source",
+  "created": "2026-10-05"
  },
  {
   "city": "Peshawar",
   "mat_id": "CON-001",
   "name": "Cement (OPC, 50 kg bag)",
   "old_rate": 1464.5,
-  "new_rate": 1520.0,
+  "new_rate": 1570.0,
   "low": 1520.0,
-  "high": 1520.0,
+  "high": 1620.0,
   "unit": "bag",
-  "change_pct": 3.79,
+  "change_pct": 7.2,
   "sources": [
    {
     "url": "https://icons.com.pk/cement-rate-today",
@@ -504,10 +789,19 @@
     "raw": "1520 bag",
     "trusted": false,
     "city": "Peshawar"
+   },
+   {
+    "url": "https://checkprice.pk/today-cement-rate-in-pakistan/",
+    "domain": "checkprice.pk",
+    "quote": "Peshawar | Rs. 1,350 – 1,620 |",
+    "price": 1620.0,
+    "raw": "1620 bag",
+    "trusted": false,
+    "city": "Peshawar"
    }
   ],
-  "reason": "+3.8% vs current - single untrusted source",
-  "created": "2026-10-03"
+  "reason": "+7.2% vs current",
+  "created": "2026-10-05"
  },
  {
   "city": "Peshawar",
@@ -531,7 +825,40 @@
    }
   ],
   "reason": "-7.0% vs current - single untrusted source",
-  "created": "2026-10-03"
+  "created": "2026-10-05"
+ },
+ {
+  "city": "Peshawar",
+  "mat_id": "CON-006",
+  "name": "Crush / bajri 3/4 inch",
+  "old_rate": 191.9,
+  "new_rate": 116.25,
+  "low": 100.0,
+  "high": 132.5,
+  "unit": "cft",
+  "change_pct": -39.42,
+  "sources": [
+   {
+    "url": "https://checkprice.pk/crush-price-in-pakistan-bajri-rate-today/",
+    "domain": "checkprice.pk",
+    "quote": "Rs. 125 – 140\nPer CFT",
+    "price": 132.5,
+    "raw": "132.5 CFT",
+    "trusted": false,
+    "city": "Pakistan"
+   },
+   {
+    "url": "https://propertydealer.pk/today-bajri-rate-in-pakistan",
+    "domain": "propertydealer.pk",
+    "quote": "For 100 Square Feet (at 5-inch thickness): You will roughly need 40 to 45 CFT of Bajri.",
+    "price": 100.0,
+    "raw": "100 cft",
+    "trusted": false,
+    "city": "Pakistan"
+   }
+  ],
+  "reason": "-39.4% vs current - single untrusted source",
+  "created": "2026-10-05"
  },
  {
   "city": "Quetta",
@@ -555,7 +882,7 @@
    }
   ],
   "reason": "-7.4% vs current - single untrusted source",
-  "created": "2026-10-03"
+  "created": "2026-10-05"
  },
  {
   "city": "Quetta",
@@ -579,6 +906,81 @@
    }
   ],
   "reason": "-12.7% vs current - single untrusted source",
-  "created": "2026-10-03"
+  "created": "2026-10-05"
+ },
+ {
+  "city": "Quetta",
+  "mat_id": "CON-004",
+  "name": "Sand for concrete (Lawrencepur / Chenab)",
+  "old_rate": 145.8,
+  "new_rate": 83.75,
+  "low": 67.5,
+  "high": 100.0,
+  "unit": "cft",
+  "change_pct": -42.56,
+  "sources": [
+   {
+    "url": "https://checkprice.pk/sand-price-in-pakistan/",
+    "domain": "checkprice.pk",
+    "quote": "Rs. 5,500–8,000 / 100 CFT",
+    "price": 67.5,
+    "raw": "6750 100 CFT",
+    "trusted": false,
+    "city": "Pakistan"
+   },
+   {
+    "url": "https://pricenod.com/sand-price-in-pakistan/",
+    "domain": "pricenod.com",
+    "quote": "Chenab Sand | Rs. 80 – 100 | Concrete mixing and foundation work |",
+    "price": 100.0,
+    "raw": "100 cft",
+    "trusted": false,
+    "city": "Pakistan"
+   }
+  ],
+  "reason": "outlier",
+  "created": "2026-10-05"
+ },
+ {
+  "city": "Quetta",
+  "mat_id": "FLR-001",
+  "name": "Porcelain floor tiles 24x24",
+  "old_rate": 280.8,
+  "new_rate": 175.0,
+  "low": 160.0,
+  "high": 210.0,
+  "unit": "sft",
+  "change_pct": -37.68,
+  "sources": [
+   {
+    "url": "https://checkprice.pk/tiles-price-in-pakistan/",
+    "domain": "checkprice.pk",
+    "quote": "Ceramic Floor Tiles (16×16 in) | 8 Pcs = 14.2 Sq. Ft | Rs. 130 – 210 | Rs. 1,850 – 2,980 |",
+    "price": 210.0,
+    "raw": "210 sft",
+    "trusted": false,
+    "city": "Pakistan"
+   },
+   {
+    "url": "https://nasirtiles.com/master-tiles-24x24-price-in-pakistan/",
+    "domain": "nasirtiles.com",
+    "quote": "Rs 130–Rs 220 per square foot",
+    "price": 175.0,
+    "raw": "175 square foot",
+    "trusted": false,
+    "city": "Pakistan"
+   },
+   {
+    "url": "https://porcelanatotiles.com/blog/our-blog-1/post/porcelain-tiles-price-in-pakistan-2026-complete-buying-guide-11",
+    "domain": "porcelanatotiles.com",
+    "quote": "Large format porcelain | 60x60cm | PKR 160–280 | Open-plan living, commercial |",
+    "price": 160.0,
+    "raw": "160 sft",
+    "trusted": false,
+    "city": "Pakistan"
+   }
+  ],
+  "reason": "-37.7% vs current - single untrusted source",
+  "created": "2026-10-05"
  }
 ]

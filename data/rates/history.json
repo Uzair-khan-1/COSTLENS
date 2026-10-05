@@ -43,5 +43,77 @@
   "new": 1502.5,
   "by": "agent (auto)",
   "reason": "auto: -0.4% from icons.com.pk, priceguide.pk"
+ },
+ {
+  "at": "2026-10-05T01:38:20",
+  "city": "Islamabad",
+  "mat_id": "CON-001",
+  "old": 1433.5,
+  "new": 1433.5,
+  "by": "agent (confirmed)",
+  "reason": "confirmed"
+ },
+ {
+  "at": "2026-10-05T01:41:52",
+  "city": "Islamabad",
+  "mat_id": "RBR-002",
+  "old": 262.0,
+  "new": 262.0,
+  "by": "agent (confirmed)",
+  "reason": "confirmed"
+ },
+ {
+  "at": "2026-10-05T01:56:53",
+  "city": "Rawalpindi",
+  "mat_id": "CON-001",
+  "old": 1435.5,
+  "new": 1436.0,
+  "by": "agent (auto)",
+  "reason": "auto: +0.0% from checkprice.pk, icons.com.pk, priceguide.pk"
+ },
+ {
+  "at": "2026-10-05T02:05:27",
+  "city": "Lahore",
+  "mat_id": "RBR-002",
+  "old": 254.14,
+  "new": 252.5,
+  "by": "agent (auto)",
+  "reason": "auto: -0.6% from icons.com.pk, kamransteel.com, pricesin.pk"
+ },
+ {
+  "at": "2026-10-05T02:06:02",
+  "city": "Karachi",
+  "mat_id": "CON-001",
+  "old": 1502.5,
+  "new": 1502.5,
+  "by": "agent (confirmed)",
+  "reason": "confirmed"
+ },
+ {
+  "at": "2026-10-05T02:06:12",
+  "city": "Karachi",
+  "mat_id": "MAS-001",
+  "old": 18.2,
+  "new": 18.12,
+  "by": "agent (auto)",
+  "reason": "auto: -0.4% from checkprice.pk, pricedata.pk"
+ },
+ {
+  "at": "2026-10-05T02:06:40",
+  "city": "Peshawar",
+  "mat_id": "MAS-001",
+  "old": 17.68,
+  "new": 18.0,
+  "by": "agent (auto)",
+  "reason": "auto: +1.8% from checkprice.pk, pricedata.pk, pricenod.com"
+ },
+ {
+  "at": "2026-10-05T02:07:07",
+  "city": "Quetta",
+  "mat_id": "MAS-001",
+  "old": 18.9,
+  "new": 18.12,
+  "by": "agent (auto)",
+  "reason": "auto: -4.1% from checkprice.pk, pricedata.pk"
  }
 ]
